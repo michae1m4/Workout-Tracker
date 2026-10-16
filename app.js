@@ -133,11 +133,12 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && loadQueue().length > 0) flushQueue();
 });
 
-// ---------- iPhone Home Screen app: re-measure the screen after typing ----------
-// iOS has a bug in Home Screen apps: after the keyboard has been used, the page keeps thinking the
-// screen is shorter (here by 59px), so the tab bar floats above the bottom. Making the browser
-// redo its layout after typing makes it measure the screen again.
-let maxInnerH = 0, lastInnerW = 0, healCount = 0, healFails = 0, healTimer = null;
+// ---------- iPhone Home Screen app: fix the screen height after typing ----------
+// iOS bug: after the keyboard has been used in a Home Screen app, the page keeps thinking the screen
+// is shorter (59px on your phone), so the tab bar floats above the bottom. We try several ways to
+// make iOS measure the screen again, stop at the first one that works, and remember it.
+let maxInnerH = 0, lastInnerW = 0, healCount = 0, healFails = 0, healTimer = null, healing = false;
+const healLog = {}; // which methods were tried and whether they worked
 
 function viewportShrunk() {
   if (!navigator.standalone) return false;                    // only Home Screen apps have this bug
@@ -148,21 +149,64 @@ function viewportShrunk() {
   return full - window.innerHeight > 4;
 }
 
+const HEALERS = [
+  { id: 'A', run: done => {                                   // redo the page layout
+      document.getElementById('healer').style.display = 'none';
+      document.body.style.display = 'none';
+      void document.body.offsetHeight;
+      document.body.style.display = '';
+      document.getElementById('healer').style.display = '';
+      done();
+  } },
+  { id: 'B', run: done => {                                   // re-apply the screen settings
+      const m = document.querySelector('meta[name="viewport"]');
+      if (!m) { done(); return; }
+      const orig = m.getAttribute('content');
+      m.setAttribute('content', 'width=device-width, initial-scale=1');
+      setTimeout(() => { m.setAttribute('content', orig); done(); }, 80);
+  } },
+  { id: 'C', run: done => {                                   // nudge the page height
+      const de = document.documentElement;
+      de.style.height = 'calc(100% + 1px)';
+      void de.offsetHeight;
+      de.style.height = '';
+      done();
+  } },
+  { id: 'D', run: done => {                                   // nudge the scroll position
+      window.scrollTo(0, 1);
+      setTimeout(() => { window.scrollTo(0, 0); done(); }, 60);
+  } }
+];
+
 function healViewport() {
+  if (healing) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) return; // keyboard is up
   if (!viewportShrunk()) { healFails = 0; return; }
-  if (healFails >= 3) return;                                 // it is not helping; stop trying
-  const y = window.pageYOffset;
-  const healer = document.getElementById('healer');
-  healer.style.display = 'none';
-  document.body.style.display = 'none';
-  void document.body.offsetHeight;                            // forces a fresh layout
-  document.body.style.display = '';
-  healer.style.display = '';
-  window.scrollTo(0, y);
+  if (healFails >= 2) return;                                 // nothing worked twice; stop trying
+  healing = true;
   healCount++;
-  if (viewportShrunk()) healFails++; else healFails = 0;
+  const y = window.pageYOffset;
+  let pref = '';
+  try { pref = localStorage.getItem('wt_heal') || ''; } catch (e) {}
+  const order = HEALERS.slice().sort((p, q) => (q.id === pref) - (p.id === pref)); // best-known first
+  let i = 0;
+  const next = () => {
+    if (i >= order.length) { healing = false; healFails++; return; }
+    const h = order[i++];
+    h.run(() => setTimeout(() => {
+      if (!viewportShrunk()) {
+        healLog[h.id] = 'worked';
+        try { localStorage.setItem('wt_heal', h.id); } catch (e) {}
+        healing = false; healFails = 0;
+        window.scrollTo(0, y);
+      } else {
+        healLog[h.id] = 'no';
+        next();
+      }
+    }, 120));
+  };
+  next();
 }
 
 function scheduleHeal(delay) {
@@ -176,6 +220,31 @@ window.addEventListener('pageshow', () => scheduleHeal(100));
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') scheduleHeal(100);
 });
+
+// TEMPORARY: shows five colored strips, each anchored to the bottom of the screen a different way,
+// so we can see which ways really reach the bottom on this phone.
+function toggleBarTest() {
+  const old = document.getElementById('barTest');
+  if (old) { old.remove(); document.body.style.minHeight = ''; return; }
+  const H = screen.height, T = 110;
+  const wrap = document.createElement('div');
+  wrap.id = 'barTest';
+  const mk = (letter, color, left, css) => {
+    const d = document.createElement('div');
+    d.textContent = letter;
+    d.style.cssText = 'width:18%;height:' + T + 'px;line-height:' + T + 'px;text-align:center;' +
+      'font:700 30px/' + T + 'px -apple-system,sans-serif;color:#000;background:' + color +
+      ';pointer-events:none;z-index:50;left:' + left + '%;' + css;
+    wrap.appendChild(d);
+  };
+  mk('A', '#ff3b30', 1,  'position:fixed;bottom:0');
+  mk('B', '#ffd60a', 21, 'position:fixed;top:' + (H - T) + 'px');
+  mk('C', '#30d158', 41, 'position:absolute;top:' + (H - T) + 'px');
+  mk('D', '#0a84ff', 61, 'position:fixed;top:calc(100dvh - ' + T + 'px)');
+  mk('E', '#bf5af2', 81, 'position:fixed;top:calc(100lvh - ' + T + 'px)');
+  document.body.style.minHeight = H + 'px';
+  document.body.appendChild(wrap);
+}
 
 // ---------- switching screens ----------
 const TAB_VIEWS = { list: 'listView', history: 'historyView', progress: 'progressView' };
@@ -203,19 +272,26 @@ function showLayoutInfo() {
   if (!out) return;
   try {
     const probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;left:0;top:0;visibility:hidden;' +
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;' +
       'padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
     document.body.appendChild(probe);
     const cs = getComputedStyle(probe);
     const safeTop = cs.paddingTop, safeBottom = cs.paddingBottom;
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;height:100lvh';
+    const lvh = probe.offsetHeight;
+    probe.style.height = '100dvh';
+    const dvh = probe.offsetHeight;
     document.body.removeChild(probe);
     const bar = document.getElementById('tabBar').getBoundingClientRect();
+    const tried = Object.keys(healLog).map(k => k + ' ' + healLog[k]).join(' · ') || 'none yet';
     out.textContent = 'Layout readout: screen ' + screen.width + 'x' + screen.height +
       ' · window ' + window.innerWidth + 'x' + window.innerHeight +
       ' · bar bottom ' + Math.round(bar.bottom) +
       ' · safe top/bottom ' + safeTop + '/' + safeBottom +
       ' · app mode ' + (navigator.standalone ? 'yes' : 'no') +
-      ' · tallest seen ' + maxInnerH + ' · fixes tried ' + healCount;
+      ' · tallest seen ' + maxInnerH + ' · fix rounds ' + healCount +
+      ' · lvh ' + lvh + ' · dvh ' + dvh +
+      ' · fixes tried: ' + tried;
   } catch (e) {
     out.textContent = 'Layout readout unavailable';
   }
