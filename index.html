@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -31,6 +31,7 @@
     <h1>Library</h1>
     <div id="list"></div>
     <button class="full" onclick="showEditor()">+ New workout</button>
+    <div class="ver">Version 8</div>
   </div>
 
   <!-- HISTORY TAB (placeholder for now) -->
@@ -54,6 +55,7 @@
 
   <!-- BUILDER VIEW -->
   <div id="builderView" class="hidden">
+    <button class="back" onclick="showList()">‹ Library</button>
     <h1 id="builderTitle">New Workout</h1>
     <label>Workout name</label>
     <input id="workoutName" placeholder="e.g. Push Day">
@@ -100,10 +102,13 @@
     </button>
   </nav>
 
+  <!-- invisible full-screen element, used to make iOS re-measure the screen after typing -->
+  <div id="healer" aria-hidden="true"></div>
+
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="config.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

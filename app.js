@@ -133,6 +133,50 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && loadQueue().length > 0) flushQueue();
 });
 
+// ---------- iPhone Home Screen app: re-measure the screen after typing ----------
+// iOS has a bug in Home Screen apps: after the keyboard has been used, the page keeps thinking the
+// screen is shorter (here by 59px), so the tab bar floats above the bottom. Making the browser
+// redo its layout after typing makes it measure the screen again.
+let maxInnerH = 0, lastInnerW = 0, healCount = 0, healFails = 0, healTimer = null;
+
+function viewportShrunk() {
+  if (!navigator.standalone) return false;                    // only Home Screen apps have this bug
+  if (window.innerWidth !== lastInnerW) { lastInnerW = window.innerWidth; maxInnerH = 0; } // rotated
+  maxInnerH = Math.max(maxInnerH, window.innerHeight);
+  let full = maxInnerH;
+  if (window.innerHeight > window.innerWidth) full = Math.max(full, screen.height); // portrait
+  return full - window.innerHeight > 4;
+}
+
+function healViewport() {
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) return; // keyboard is up
+  if (!viewportShrunk()) { healFails = 0; return; }
+  if (healFails >= 3) return;                                 // it is not helping; stop trying
+  const y = window.pageYOffset;
+  const healer = document.getElementById('healer');
+  healer.style.display = 'none';
+  document.body.style.display = 'none';
+  void document.body.offsetHeight;                            // forces a fresh layout
+  document.body.style.display = '';
+  healer.style.display = '';
+  window.scrollTo(0, y);
+  healCount++;
+  if (viewportShrunk()) healFails++; else healFails = 0;
+}
+
+function scheduleHeal(delay) {
+  clearTimeout(healTimer);
+  healTimer = setTimeout(healViewport, delay || 200);
+}
+
+document.addEventListener('focusout', () => scheduleHeal(250));
+window.addEventListener('resize', () => scheduleHeal(250));
+window.addEventListener('pageshow', () => scheduleHeal(100));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') scheduleHeal(100);
+});
+
 // ---------- switching screens ----------
 const TAB_VIEWS = { list: 'listView', history: 'historyView', progress: 'progressView' };
 const ALL_VIEWS = ['setupView', 'listView', 'historyView', 'progressView', 'builderView', 'runView'];
@@ -148,6 +192,7 @@ function showOnly(id) {
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', TAB_VIEWS[t.dataset.tab] === id);
   });
+  if (isTab) scheduleHeal(60);
   if (id === 'historyView') showLayoutInfo();
   window.scrollTo(0, 0);
 }
@@ -155,6 +200,7 @@ function showOnly(id) {
 // TEMPORARY: measures the screen so we can find out why the tab bar floats above the bottom.
 function showLayoutInfo() {
   const out = document.getElementById('layoutInfo');
+  if (!out) return;
   try {
     const probe = document.createElement('div');
     probe.style.cssText = 'position:fixed;left:0;top:0;visibility:hidden;' +
@@ -168,7 +214,8 @@ function showLayoutInfo() {
       ' · window ' + window.innerWidth + 'x' + window.innerHeight +
       ' · bar bottom ' + Math.round(bar.bottom) +
       ' · safe top/bottom ' + safeTop + '/' + safeBottom +
-      ' · app mode ' + (navigator.standalone ? 'yes' : 'no');
+      ' · app mode ' + (navigator.standalone ? 'yes' : 'no') +
+      ' · tallest seen ' + maxInnerH + ' · fixes tried ' + healCount;
   } catch (e) {
     out.textContent = 'Layout readout unavailable';
   }
