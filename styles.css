@@ -12,6 +12,7 @@
 * { -webkit-tap-highlight-color: transparent; }
 html { background: var(--bg); }
 body {
+  box-sizing: border-box;
   font-family: -apple-system, 'SF Pro Display', sans-serif;
   margin: 0;
   /* safe-area padding keeps content clear of the clock/battery and the home bar */

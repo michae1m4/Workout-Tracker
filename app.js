@@ -221,30 +221,21 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') scheduleHeal(100);
 });
 
-// TEMPORARY: shows five colored strips, each anchored to the bottom of the screen a different way,
-// so we can see which ways really reach the bottom on this phone.
-function toggleBarTest() {
-  const old = document.getElementById('barTest');
-  if (old) { old.remove(); document.body.style.minHeight = ''; return; }
-  const H = screen.height, T = 110;
-  const wrap = document.createElement('div');
-  wrap.id = 'barTest';
-  const mk = (letter, color, left, css) => {
-    const d = document.createElement('div');
-    d.textContent = letter;
-    d.style.cssText = 'width:18%;height:' + T + 'px;line-height:' + T + 'px;text-align:center;' +
-      'font:700 30px/' + T + 'px -apple-system,sans-serif;color:#000;background:' + color +
-      ';pointer-events:none;z-index:50;left:' + left + '%;' + css;
-    wrap.appendChild(d);
-  };
-  mk('A', '#ff3b30', 1,  'position:fixed;bottom:0');
-  mk('B', '#ffd60a', 21, 'position:fixed;top:' + (H - T) + 'px');
-  mk('C', '#30d158', 41, 'position:absolute;top:' + (H - T) + 'px');
-  mk('D', '#0a84ff', 61, 'position:fixed;top:calc(100dvh - ' + T + 'px)');
-  mk('E', '#bf5af2', 81, 'position:fixed;top:calc(100lvh - ' + T + 'px)');
-  document.body.style.minHeight = H + 'px';
-  document.body.appendChild(wrap);
+// ---------- Home Screen app: keep the page slightly taller than the screen ----------
+// On iPhones, a Home Screen app whose page is no taller than the screen can end up with the tab bar
+// floating above the bottom (iOS measures the screen 59px too short). Found with the bar test: the bar
+// sat correctly at the bottom exactly while the page was taller than the screen. So in the Home Screen
+// app we keep the page just taller than the screen. It only exists to make iOS place things correctly.
+function applyStandaloneHeight() {
+  if (!navigator.standalone) return;
+  const portrait = window.innerHeight > window.innerWidth;
+  const longSide = Math.max(screen.width, screen.height);
+  document.body.style.minHeight = portrait ? (longSide + 2) + 'px' : '';
 }
+applyStandaloneHeight();
+window.addEventListener('resize', applyStandaloneHeight);
+window.addEventListener('orientationchange', applyStandaloneHeight);
+window.addEventListener('pageshow', applyStandaloneHeight);
 
 // ---------- switching screens ----------
 const TAB_VIEWS = { list: 'listView', history: 'historyView', progress: 'progressView' };
@@ -291,6 +282,7 @@ function showLayoutInfo() {
       ' · app mode ' + (navigator.standalone ? 'yes' : 'no') +
       ' · tallest seen ' + maxInnerH + ' · fix rounds ' + healCount +
       ' · lvh ' + lvh + ' · dvh ' + dvh +
+      ' · page height ' + document.documentElement.scrollHeight +
       ' · fixes tried: ' + tried;
   } catch (e) {
     out.textContent = 'Layout readout unavailable';
