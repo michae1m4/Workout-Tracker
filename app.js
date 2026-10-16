@@ -72,6 +72,18 @@ function enqueueSet(item) {
   flushQueue();
 }
 
+// Workout changes (save / delete) use the same queue, so they keep their order with logged sets.
+// Items without "op" are logged sets (the original format).
+function enqueueOp(op, payload) {
+  const q = loadQueue();
+  q.push({ op: op, payload: payload, opId: newId() });
+  saveQueue(q);
+  updateSyncStatus();
+  flushQueue();
+}
+
+function pendingOps() { return loadQueue().some(i => i.op); }
+
 async function flushQueue() {
   if (flushing) return;
   flushing = true;
@@ -79,13 +91,25 @@ async function flushQueue() {
   syncProblem = '';
   updateSyncStatus();
   let sentAny = false;
+  let opsChanged = false;
   try {
     while (loadQueue().length > 0) {
       const item = loadQueue()[0];
       try {
-        await api('logSet', item);
+        await api(item.op || 'logSet', item.op ? item.payload : item);
       } catch (err) {
         if (err.message === 'Bad key') return; // the key screen is showing; sets stay queued
+        if (err.server && item.op) {
+          // the Sheet refused this workout change: drop it so it can't block your sets, and say so
+          const q2 = loadQueue();
+          q2.shift();
+          saveQueue(q2);
+          syncProblem = '';
+          updateSyncStatus();
+          alert('A workout change was not saved: ' + err.message);
+          opsChanged = true;
+          continue;
+        }
         syncProblem = err.server ? 'Could not save: ' + err.message : 'Offline';
         updateSyncStatus();
         if (!err.server) retryTimer = setTimeout(flushQueue, 8000); // try again soon
@@ -95,9 +119,11 @@ async function flushQueue() {
       q.shift();
       saveQueue(q);
       sentAny = true;
+      if (item.op) opsChanged = true;
       updateSyncStatus();
     }
     updateSyncStatus(sentAny);
+    if (opsChanged && !pendingOps()) refreshListQuietly();
   } finally {
     flushing = false;
   }
@@ -118,7 +144,9 @@ function updateSyncStatus(justFinished) {
     }
     return;
   }
-  const noun = n === 1 ? '1 set' : n + ' sets';
+  const allSets = loadQueue().every(i => !i.op);
+  const unit = allSets ? 'set' : 'change';
+  const noun = n === 1 ? '1 ' + unit : n + ' ' + unit + 's';
   if (syncProblem) {
     el.className = 'sync err';
     el.textContent = syncProblem + ' · ' + noun + ' waiting · tap to retry';
@@ -344,6 +372,7 @@ function loadList() {
   }
   api('getWorkouts')
     .then(fresh => {
+      if (pendingOps()) return; // unsent edits on this phone are newer than what the Sheet has
       writeJSON('wt_workouts', fresh);
       if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) renderList(fresh);
     })
@@ -351,6 +380,16 @@ function loadList() {
       if (err.message === 'Bad key') return;
       if (!cached) list.textContent = 'Error: ' + err.message;
     });
+}
+
+// After queued edits have reached the Sheet, re-read it so this phone matches exactly.
+function refreshListQuietly() {
+  api('getWorkouts').then(fresh => {
+    if (pendingOps()) return;
+    writeJSON('wt_workouts', fresh);
+    if (!document.getElementById('listView').classList.contains('hidden') &&
+        JSON.stringify(fresh) !== JSON.stringify(allWorkouts)) renderList(fresh);
+  }).catch(() => {});
 }
 
 function renderList(workouts) {
@@ -397,14 +436,11 @@ function renderList(workouts) {
     del.textContent = 'Delete';
     del.onclick = () => {
       if (confirm('Delete "' + name + '"?')) {
-        api('deleteWorkout', { name: name })
-          .then(() => {
-            const cur = readJSON('wt_workouts', {});
-            delete cur[name];
-            writeJSON('wt_workouts', cur);
-            showList();
-          })
-          .catch(err => alert('Not deleted: ' + err.message));
+        const cur = readJSON('wt_workouts', {});
+        delete cur[name];
+        writeJSON('wt_workouts', cur);
+        renderList(cur);                       // gone from the screen right away
+        enqueueOp('deleteWorkout', { name: name }); // the Sheet catches up in the background
       }
     };
 
@@ -776,14 +812,12 @@ function saveCurrent() {
   const payload = { name: name, exercises: exercises };
   if (oldName && oldName !== name) payload.oldName = oldName; // renaming
 
-  msg.textContent = 'Saving...';
-  api('saveWorkout', payload)
-    .then(() => {
-      replaceInCache(oldName, name, exercises);
-      editingName = null;
-      showList();
-    })
-    .catch(err => { msg.textContent = 'Error: ' + err.message; });
+  payload.requestId = newId();
+  replaceInCache(oldName, name, exercises); // update this phone first...
+  editingName = null;
+  msg.textContent = '';
+  enqueueOp('saveWorkout', payload);        // ...let the Sheet catch up in the background...
+  showList();                               // ...and go straight back to the Library
 }
 
 // ---------- start ----------
