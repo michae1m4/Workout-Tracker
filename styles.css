@@ -27,7 +27,24 @@ h1 { font-size: 32px; font-weight: 800; margin: 8px 0 18px; letter-spacing: -0.5
 .card b { display: block; font-size: 19px; font-weight: 700; margin-bottom: 2px; }
 .card span.sub { color: var(--muted); font-size: 14px; }
 .row { display: flex; gap: 10px; margin-top: 10px; }
-.row > div { flex: 1; }
+.row > div { flex: 1; min-width: 0; }
+.cardhead { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+.cardhead .chev { color: var(--muted); font-size: 28px; font-weight: 300; padding: 0 4px 0 12px; }
+.exactions { display: flex; gap: 8px; margin-top: 12px; }
+.exactions button { padding: 11px 0; }
+.exactions button.grow { flex: 1; }
+.exhead { display: flex; align-items: center; gap: 6px; }
+.exhead input { flex: 1; min-width: 0; }
+.handle {
+  flex: none; width: 40px; height: 44px; margin-left: -6px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: grab;
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.handle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.card.shifting { transition: transform 0.15s ease; }
+.card.dragging { position: relative; z-index: 5; background: #2a2a2d; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75); }
+.info { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 10px; word-break: break-word; }
 label {
   display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px;
   text-transform: uppercase; letter-spacing: 0.5px;

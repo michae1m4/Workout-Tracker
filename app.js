@@ -1,6 +1,7 @@
 const RESISTANCE = ['dumbbell', 'body weight', 'cable', 'machine', 'other'];
 let allWorkouts = {};
 let currentRun = null; // { name, planned, ids: Set of requestIds logged in this run }
+let editingName = null; // name of the workout open in the editor, or null for a new one
 
 // ---------- small helpers for saved data on this phone ----------
 function getKey() {
@@ -147,7 +148,30 @@ function showOnly(id) {
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', TAB_VIEWS[t.dataset.tab] === id);
   });
+  if (id === 'historyView') showLayoutInfo();
   window.scrollTo(0, 0);
+}
+
+// TEMPORARY: measures the screen so we can find out why the tab bar floats above the bottom.
+function showLayoutInfo() {
+  const out = document.getElementById('layoutInfo');
+  try {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;top:0;visibility:hidden;' +
+      'padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    const safeTop = cs.paddingTop, safeBottom = cs.paddingBottom;
+    document.body.removeChild(probe);
+    const bar = document.getElementById('tabBar').getBoundingClientRect();
+    out.textContent = 'Layout readout: screen ' + screen.width + 'x' + screen.height +
+      ' · window ' + window.innerWidth + 'x' + window.innerHeight +
+      ' · bar bottom ' + Math.round(bar.bottom) +
+      ' · safe top/bottom ' + safeTop + '/' + safeBottom +
+      ' · app mode ' + (navigator.standalone ? 'yes' : 'no');
+  } catch (e) {
+    out.textContent = 'Layout readout unavailable';
+  }
 }
 
 function showTab(tab) {
@@ -171,12 +195,20 @@ function saveKey() {
   if (loadQueue().length > 0) flushQueue();
 }
 
-function showBuilder() {
+// Opens the editor. With a name it shows that saved workout; without one it starts a new workout.
+function showEditor(name) {
+  editingName = name || null;
   showOnly('builderView');
-  document.getElementById('workoutName').value = '';
+  document.getElementById('builderTitle').textContent = name ? 'Edit Workout' : 'New Workout';
+  document.getElementById('builderSave').textContent = name ? 'Save changes' : 'Save workout';
+  document.getElementById('workoutName').value = name || '';
   document.getElementById('exerciseRows').textContent = '';
   document.getElementById('builderMsg').textContent = '';
-  addRow();
+  if (name && allWorkouts[name]) {
+    allWorkouts[name].forEach(ex => addRow(ex));
+  } else {
+    addRow();
+  }
 }
 
 // ---------- library (workout list) ----------
@@ -221,12 +253,25 @@ function renderList(workouts) {
     const card = document.createElement('div');
     card.className = 'card';
 
+    // tapping the name area opens the editor
+    const head = document.createElement('div');
+    head.className = 'cardhead';
+    head.onclick = () => showEditor(name);
+
+    const headText = document.createElement('div');
     const title = document.createElement('b');
     title.textContent = name;
-
     const detail = document.createElement('span');
     detail.className = 'sub';
     detail.textContent = workouts[name].length + (workouts[name].length === 1 ? ' exercise' : ' exercises');
+    headText.appendChild(title);
+    headText.appendChild(detail);
+
+    const chev = document.createElement('div');
+    chev.className = 'chev';
+    chev.textContent = '›';
+    head.appendChild(headText);
+    head.appendChild(chev);
 
     const start = document.createElement('button');
     start.textContent = 'Start';
@@ -253,8 +298,7 @@ function renderList(workouts) {
     actions.appendChild(start);
     actions.appendChild(del);
 
-    card.appendChild(title);
-    card.appendChild(detail);
+    card.appendChild(head);
     card.appendChild(actions);
     list.appendChild(card);
   });
@@ -311,6 +355,7 @@ function makeSetRow(workout, ex, n, rows) {
   weight.inputMode = 'decimal';
   weight.placeholder = 'Weight';
   if (ex.resistance === 'body weight') weight.value = 0;
+  if (ex.weight) weight.value = ex.weight; // the weight you set in the editor
 
   const btn = document.createElement('button');
   btn.textContent = 'Log';
@@ -408,7 +453,7 @@ function closeFinish() {
   showList();
 }
 
-// ---------- builder screen ----------
+// ---------- builder / editor screen ----------
 function makeField(labelText, input) {
   const wrap = document.createElement('div');
   const label = document.createElement('label');
@@ -418,55 +463,173 @@ function makeField(labelText, input) {
   return wrap;
 }
 
-function addRow() {
+// Press the three-line handle and drag the card up or down to reorder it.
+// The dragged card stays where it is in the page while you drag (it only follows your finger
+// visually) and the other cards slide out of the way. The order is changed once, when you let go.
+function enableDrag(handle, card) {
+  let active = false, pointerY = 0, grab = 0, raf = 0;
+  let cards = [], tops = [], d = 0, target = 0, h = 0, step = 0;
+
+  function docTop(el) { return el.getBoundingClientRect().top + window.pageYOffset; }
+
+  function layout() {
+    const top = pointerY + window.pageYOffset - grab;          // where the dragged card's top is now
+    card.style.transform = 'translateY(' + (top - tops[d]) + 'px)';
+    const center = top + h / 2;
+    let t = 0;                                                 // how many other cards are above it
+    cards.forEach((c, i) => { if (i !== d && tops[i] + c.offsetHeight / 2 < center) t++; });
+    target = t;
+    cards.forEach((c, i) => {
+      if (i === d) return;
+      let shift = 0;
+      if (t > d && i > d && i <= t) shift = -step;             // cards it moved past slide up
+      if (t < d && i >= t && i < d) shift = step;              // cards it moved past slide down
+      c.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+    });
+  }
+
+  function tick() {
+    if (!active) return;
+    // scroll the page when the finger nears the top or bottom edge
+    if (pointerY < 90) window.scrollBy(0, -12);
+    else if (pointerY > window.innerHeight - 90) window.scrollBy(0, 12);
+    layout();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function stop() {
+    if (!active) return;
+    active = false;
+    cancelAnimationFrame(raf);
+    const container = card.parentElement;
+    cards.forEach(c => { c.style.transform = ''; c.classList.remove('shifting'); });
+    card.classList.remove('dragging');
+    if (target !== d) {                                        // apply the new order
+      const rest = cards.filter(c => c !== card);
+      container.insertBefore(card, rest[target] || null);
+    }
+  }
+
+  handle.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    const container = card.parentElement;
+    cards = Array.prototype.slice.call(container.children);
+    d = cards.indexOf(card);
+    target = d;
+    tops = cards.map(docTop);
+    h = card.offsetHeight;
+    step = h + (parseFloat(getComputedStyle(card).marginBottom) || 0);
+    pointerY = e.clientY;
+    grab = pointerY + window.pageYOffset - tops[d];
+    cards.forEach(c => { if (c !== card) c.classList.add('shifting'); });
+    card.classList.add('dragging');
+    active = true;
+    tick();
+  });
+  handle.addEventListener('pointermove', e => { if (active) pointerY = e.clientY; });
+  handle.addEventListener('pointerup', stop);
+  handle.addEventListener('pointercancel', stop);
+}
+
+// Adds one exercise card. Pass the saved exercise to pre-fill it.
+function addRow(data) {
+  data = data || {};
   const card = document.createElement('div');
   card.className = 'card';
 
   const nameInput = document.createElement('input');
   nameInput.className = 'ex-name';
   nameInput.placeholder = 'Exercise name';
+  nameInput.value = data.exercise || '';
 
   const select = document.createElement('select');
   select.className = 'ex-resistance';
-  RESISTANCE.forEach(r => {
+  // keep an unusual type from the Sheet instead of silently changing it
+  const types = (!data.resistance || RESISTANCE.indexOf(data.resistance) !== -1)
+    ? RESISTANCE : RESISTANCE.concat(data.resistance);
+  types.forEach(r => {
     const opt = document.createElement('option');
     opt.value = r;
     opt.textContent = r;
     select.appendChild(opt);
   });
+  if (data.resistance) select.value = data.resistance;
 
   const sets = document.createElement('input');
   sets.className = 'ex-sets';
   sets.type = 'number';
   sets.inputMode = 'numeric';
-  sets.value = 3;
+  sets.value = data.sets || 3;
 
   const rest = document.createElement('input');
   rest.className = 'ex-rest';
   rest.type = 'number';
   rest.inputMode = 'numeric';
-  rest.value = 90;
+  rest.value = (data.rest === 0 || data.rest) ? data.rest : 90;
+
+  const weight = document.createElement('input');
+  weight.className = 'ex-weight';
+  weight.type = 'number';
+  weight.inputMode = 'decimal';
+  weight.placeholder = '—';
+  weight.value = data.weight || '';
+
+  // three-line handle: press it and drag to reorder
+  const handle = document.createElement('div');
+  handle.className = 'handle';
+  handle.innerHTML = '<svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>';
+  enableDrag(handle, card);
+
+  const exhead = document.createElement('div');
+  exhead.className = 'exhead';
+  exhead.appendChild(handle);
+  exhead.appendChild(nameInput);
 
   const remove = document.createElement('button');
-  remove.className = 'secondary';
+  remove.className = 'secondary grow';
   remove.textContent = 'Remove';
-  remove.style.marginTop = '10px';
   remove.onclick = () => card.remove();
 
   const row1 = document.createElement('div');
   row1.className = 'row';
-  row1.appendChild(makeField('Resistance', select));
+  row1.appendChild(makeField('Resistance Type', select));
 
   const row2 = document.createElement('div');
   row2.className = 'row';
   row2.appendChild(makeField('Sets', sets));
-  row2.appendChild(makeField('Rest (seconds)', rest));
+  row2.appendChild(makeField('Rest (s)', rest));
+  row2.appendChild(makeField('Weight', weight));
 
-  card.appendChild(nameInput);
+  const exactions = document.createElement('div');
+  exactions.className = 'exactions';
+  exactions.appendChild(remove);
+
+  card.appendChild(exhead);
   card.appendChild(row1);
   card.appendChild(row2);
-  card.appendChild(remove);
+  card.appendChild(exactions);
   document.getElementById('exerciseRows').appendChild(card);
+}
+
+function numOr(value, fallback, min, max) {
+  if (value === '' || value === null || value === undefined) return fallback;
+  const n = Number(value);
+  if (isNaN(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+// After an edit, update the saved copy on this phone, keeping the workout's place in the list.
+function replaceInCache(oldName, newName, exercises) {
+  const cur = readJSON('wt_workouts', {});
+  const out = {};
+  let placed = false;
+  Object.keys(cur).forEach(k => {
+    if (k === oldName) { out[newName] = exercises; placed = true; }
+    else if (k !== newName) out[k] = cur[k];
+  });
+  if (!placed) out[newName] = exercises;
+  writeJSON('wt_workouts', out);
 }
 
 function saveCurrent() {
@@ -474,27 +637,35 @@ function saveCurrent() {
   const name = document.getElementById('workoutName').value.trim();
   if (!name) { msg.textContent = 'Give the workout a name.'; return; }
 
+  const oldName = editingName;
+  if (name !== oldName && allWorkouts[name]) {
+    msg.textContent = '"' + name + '" already exists. Pick a different name, or open it from the Library to edit it.';
+    return;
+  }
+
   const exercises = [];
   document.querySelectorAll('#exerciseRows .card').forEach(card => {
     const exName = card.querySelector('.ex-name').value.trim();
     if (!exName) return; // skip blank rows
+    const w = Number(card.querySelector('.ex-weight').value);
     exercises.push({
       exercise: exName,
       resistance: card.querySelector('.ex-resistance').value,
-      sets: Number(card.querySelector('.ex-sets').value) || 3,
-      rest: Number(card.querySelector('.ex-rest').value) || 90
+      sets: numOr(card.querySelector('.ex-sets').value, 3, 1, 20),
+      rest: numOr(card.querySelector('.ex-rest').value, 90, 0, 3600),
+      weight: w > 0 ? w : ''
     });
   });
   if (exercises.length === 0) { msg.textContent = 'Add at least one exercise.'; return; }
 
+  const payload = { name: name, exercises: exercises };
+  if (oldName && oldName !== name) payload.oldName = oldName; // renaming
+
   msg.textContent = 'Saving...';
-  api('saveWorkout', { name: name, exercises: exercises })
+  api('saveWorkout', payload)
     .then(() => {
-      // update the saved list on this phone so the new workout shows up instantly
-      const cur = readJSON('wt_workouts', {});
-      delete cur[name];          // a replaced workout moves to the end, like in the Sheet
-      cur[name] = exercises;
-      writeJSON('wt_workouts', cur);
+      replaceInCache(oldName, name, exercises);
+      editingName = null;
       showList();
     })
     .catch(err => { msg.textContent = 'Error: ' + err.message; });

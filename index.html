@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 
@@ -30,7 +30,7 @@
   <div id="listView" class="hidden">
     <h1>Library</h1>
     <div id="list"></div>
-    <button class="full" onclick="showBuilder()">+ New workout</button>
+    <button class="full" onclick="showEditor()">+ New workout</button>
   </div>
 
   <!-- HISTORY TAB (placeholder for now) -->
@@ -40,6 +40,7 @@
       <b>Coming next</b>
       <span class="sub">Your completed workouts will show up here.</span>
     </div>
+    <div id="layoutInfo" class="info"></div>
   </div>
 
   <!-- PROGRESS TAB (placeholder for now) -->
@@ -53,13 +54,13 @@
 
   <!-- BUILDER VIEW -->
   <div id="builderView" class="hidden">
-    <h1>New Workout</h1>
+    <h1 id="builderTitle">New Workout</h1>
     <label>Workout name</label>
     <input id="workoutName" placeholder="e.g. Push Day">
     <div id="exerciseRows" style="margin-top:12px"></div>
     <button class="secondary full" onclick="addRow()">+ Add exercise</button>
     <div class="actions">
-      <button onclick="saveCurrent()">Save workout</button>
+      <button id="builderSave" onclick="saveCurrent()">Save workout</button>
       <button class="secondary" onclick="showList()">Cancel</button>
     </div>
     <div id="builderMsg" class="msg"></div>
@@ -102,7 +103,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="config.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
