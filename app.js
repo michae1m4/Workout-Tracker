@@ -1,5 +1,6 @@
 const RESISTANCE = ['dumbbell', 'body weight', 'cable', 'machine', 'other'];
 let allWorkouts = {};
+let currentRun = null; // { name, planned, ids: Set of requestIds logged in this run }
 
 // ---------- small helpers for saved data on this phone ----------
 function getKey() {
@@ -102,6 +103,7 @@ async function flushQueue() {
 }
 
 function updateSyncStatus(justFinished) {
+  if (!document.getElementById('finishView').classList.contains('hidden')) renderFinish();
   const el = document.getElementById('syncStatus');
   const n = loadQueue().length;
   clearTimeout(hideTimer);
@@ -131,12 +133,29 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---------- switching screens ----------
+const TAB_VIEWS = { list: 'listView', history: 'historyView', progress: 'progressView' };
+const ALL_VIEWS = ['setupView', 'listView', 'historyView', 'progressView', 'builderView', 'runView'];
+
 function showOnly(id) {
-  ['setupView', 'listView', 'builderView', 'runView'].forEach(v => {
+  ALL_VIEWS.forEach(v => {
     document.getElementById(v).classList.toggle('hidden', v !== id);
+  });
+  // the tab bar is only shown on the three main tabs
+  const isTab = Object.keys(TAB_VIEWS).some(t => TAB_VIEWS[t] === id);
+  document.getElementById('tabBar').classList.toggle('hidden', !isTab);
+  document.body.classList.toggle('has-tabs', isTab);
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', TAB_VIEWS[t.dataset.tab] === id);
   });
   window.scrollTo(0, 0);
 }
+
+function showTab(tab) {
+  showOnly(TAB_VIEWS[tab]);
+  if (tab === 'list') loadList();
+}
+
+function showList() { showTab('list'); }
 
 function showSetup(message) {
   showOnly('setupView');
@@ -152,11 +171,6 @@ function saveKey() {
   if (loadQueue().length > 0) flushQueue();
 }
 
-function showList() {
-  showOnly('listView');
-  loadList();
-}
-
 function showBuilder() {
   showOnly('builderView');
   document.getElementById('workoutName').value = '';
@@ -165,31 +179,29 @@ function showBuilder() {
   addRow();
 }
 
-// ---------- list screen ----------
+// ---------- library (workout list) ----------
 // Shows the last known list instantly, then refreshes it from the Sheet in the background.
 function loadList() {
   const list = document.getElementById('list');
-  const info = document.getElementById('listInfo'); // temporary diagnostic line
   const cached = readJSON('wt_workouts', null);
-  const t0 = Date.now();
-  const secs = () => ((Date.now() - t0) / 1000).toFixed(1) + 's';
   if (cached) {
     renderList(cached);
-    info.textContent = 'Showing saved copy · checking the Sheet…';
   } else {
-    list.textContent = 'Loading...';
-    info.textContent = 'No saved copy on this phone yet · asking the Sheet…';
+    // placeholder cards instead of a plain "Loading..."
+    list.textContent = '';
+    for (let i = 0; i < 2; i++) {
+      const sk = document.createElement('div');
+      sk.className = 'skeleton';
+      list.appendChild(sk);
+    }
   }
   api('getWorkouts')
     .then(fresh => {
-      const saved = writeJSON('wt_workouts', fresh) && readJSON('wt_workouts', null) !== null;
-      info.textContent = 'Sheet answered in ' + secs() + ' · ' +
-        (saved ? 'copy saved on this phone' : 'could NOT save a copy on this phone');
+      writeJSON('wt_workouts', fresh);
       if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) renderList(fresh);
     })
     .catch(err => {
       if (err.message === 'Bad key') return;
-      info.textContent = 'Sheet failed after ' + secs() + ': ' + err.message;
       if (!cached) list.textContent = 'Error: ' + err.message;
     });
 }
@@ -214,7 +226,7 @@ function renderList(workouts) {
 
     const detail = document.createElement('span');
     detail.className = 'sub';
-    detail.textContent = workouts[name].length + ' exercises';
+    detail.textContent = workouts[name].length + (workouts[name].length === 1 ? ' exercise' : ' exercises');
 
     const start = document.createElement('button');
     start.textContent = 'Start';
@@ -254,6 +266,10 @@ function startRun(name) {
   document.getElementById('runTitle').textContent = name;
   const body = document.getElementById('runBody');
   body.textContent = '';
+
+  let planned = 0;
+  allWorkouts[name].forEach(ex => { planned += ex.sets; });
+  currentRun = { name: name, planned: planned, ids: new Set() };
 
   allWorkouts[name].forEach(ex => {
     const card = document.createElement('div');
@@ -316,8 +332,10 @@ function makeSetRow(workout, ex, n, rows) {
       if (!next.weight.value) next.weight.value = weight.value;
     }
 
+    const id = newId();
+    if (currentRun) currentRun.ids.add(id); // so the finish screen can check these sets were saved
     enqueueSet({
-      requestId: newId(),
+      requestId: id,
       workout: workout,
       exercise: ex.exercise,
       resistance: ex.resistance,
@@ -333,6 +351,61 @@ function makeSetRow(workout, ex, n, rows) {
   row.appendChild(weight);
   row.appendChild(btn);
   return row;
+}
+
+// ---------- finish screen ----------
+function finishWorkout() {
+  if (!currentRun || currentRun.ids.size === 0) { // nothing was logged
+    currentRun = null;
+    showList();
+    return;
+  }
+  document.getElementById('finishView').classList.remove('hidden');
+  renderFinish();
+}
+
+function renderFinish() {
+  const run = currentRun;
+  if (!run) return;
+  const logged = run.ids.size;
+  const pending = loadQueue().filter(i => run.ids.has(i.requestId)).length;
+  const saved = logged - pending;
+
+  const icon = document.getElementById('finishIcon');
+  const title = document.getElementById('finishTitle');
+  const sub = document.getElementById('finishSub');
+  const retry = document.getElementById('finishRetry');
+  const done = document.getElementById('finishDone');
+
+  if (pending === 0) {
+    icon.className = 'bigcheck';
+    icon.textContent = '✓';
+    title.textContent = 'Workout saved';
+    sub.textContent = saved + ' of ' + run.planned + ' sets logged to your Sheet.';
+    retry.classList.add('hidden');
+    done.classList.remove('hidden');
+  } else if (syncProblem) {
+    icon.className = 'bigcheck warn';
+    icon.textContent = '!';
+    title.textContent = 'Not saved yet';
+    sub.textContent = pending + (pending === 1 ? ' set is' : ' sets are') +
+      ' still waiting to reach your Sheet. They are stored on this phone and will keep retrying.';
+    retry.classList.remove('hidden');
+    done.classList.remove('hidden');
+  } else {
+    icon.className = 'bigcheck wait';
+    icon.textContent = '…';
+    title.textContent = 'Saving…';
+    sub.textContent = saved + ' of ' + logged + ' sets saved.';
+    retry.classList.add('hidden');
+    done.classList.add('hidden');
+  }
+}
+
+function closeFinish() {
+  document.getElementById('finishView').classList.add('hidden');
+  currentRun = null;
+  showList();
 }
 
 // ---------- builder screen ----------

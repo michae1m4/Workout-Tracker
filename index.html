@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -26,12 +26,29 @@
     </div>
   </div>
 
-  <!-- LIST VIEW -->
+  <!-- LIBRARY TAB -->
   <div id="listView" class="hidden">
-    <h1>My Workouts</h1>
-    <div id="listInfo" class="info"></div>
-    <div id="list">Loading...</div>
+    <h1>Library</h1>
+    <div id="list"></div>
     <button class="full" onclick="showBuilder()">+ New workout</button>
+  </div>
+
+  <!-- HISTORY TAB (placeholder for now) -->
+  <div id="historyView" class="hidden">
+    <h1>History</h1>
+    <div class="card">
+      <b>Coming next</b>
+      <span class="sub">Your completed workouts will show up here.</span>
+    </div>
+  </div>
+
+  <!-- PROGRESS TAB (placeholder for now) -->
+  <div id="progressView" class="hidden">
+    <h1>Progress</h1>
+    <div class="card">
+      <b>Coming soon</b>
+      <span class="sub">Charts for each exercise will show up here.</span>
+    </div>
   </div>
 
   <!-- BUILDER VIEW -->
@@ -53,14 +70,39 @@
     <h1 id="runTitle"></h1>
     <div id="runBody"></div>
     <div class="actions">
-      <button onclick="showList()">Finish workout</button>
+      <button onclick="finishWorkout()">Finish workout</button>
     </div>
   </div>
+
+  <!-- FINISH SCREEN: confirms the sets reached your Sheet -->
+  <div id="finishView" class="overlay hidden">
+    <div id="finishIcon" class="bigcheck wait"></div>
+    <h2 id="finishTitle"></h2>
+    <p id="finishSub"></p>
+    <button id="finishRetry" class="secondary hidden" onclick="flushQueue()">Retry now</button>
+    <button id="finishDone" class="hidden" onclick="closeFinish()">Done</button>
+  </div>
+
+  <!-- BOTTOM TAB BAR -->
+  <nav id="tabBar" class="tabbar hidden">
+    <button class="tab" data-tab="list" onclick="showTab('list')">
+      <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/></svg>
+      <span>Library</span>
+    </button>
+    <button class="tab" data-tab="history" onclick="showTab('history')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+      <span>History</span>
+    </button>
+    <button class="tab" data-tab="progress" onclick="showTab('progress')">
+      <svg viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+      <span>Progress</span>
+    </button>
+  </nav>
 
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="config.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
