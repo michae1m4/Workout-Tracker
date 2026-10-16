@@ -7,19 +7,49 @@ function getKey() {
 }
 
 async function api(action, payload) {
-  // text/plain keeps this a "simple" request, so the browser skips the CORS preflight
-  // that Apps Script can't answer.
-  const res = await fetch(CONFIG.API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ key: getKey(), action: action }, payload || {}))
-  });
-  const json = await res.json();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000); // give up after 30 seconds
+  let text;
+  try {
+    // text/plain keeps this a "simple" request, so the browser skips the CORS preflight
+    // that Apps Script can't answer.
+    const res = await fetch(CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ key: getKey(), action: action }, payload || {})),
+      signal: ctrl.signal
+    });
+    text = await res.text();
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'The server took too long to answer.' : 'Could not reach the server.');
+  } finally {
+    clearTimeout(timer);
+  }
+  let json;
+  try { json = JSON.parse(text); } catch (e) { throw new Error('The server sent an unexpected reply.'); }
   if (!json.ok) {
     if (json.error === 'Bad key') { showSetup('That key was not accepted. Check it and try again.'); }
-    throw new Error(json.error);
+    const err = new Error(json.error);
+    err.server = true; // the server answered properly, so retrying would not help
+    throw err;
   }
   return json.data;
+}
+
+// Tries again after a short pause if the connection hiccups.
+async function apiRetry(action, payload, retries) {
+  for (let i = 0; ; i++) {
+    try {
+      return await api(action, payload);
+    } catch (err) {
+      if (err.server || i >= retries) throw err;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+}
+
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
 // ---------- switching screens ----------
@@ -171,14 +201,16 @@ function makeSetRow(workout, ex, n, rows) {
     if (!r || r <= 0) { reps.focus(); return; }
     btn.disabled = true;
     btn.textContent = '...';
-    api('logSet', {
+    // requestId lets the backend ignore a repeat of the same tap, so a retry never doubles a row
+    apiRetry('logSet', {
+      requestId: newId(),
       workout: workout,
       exercise: ex.exercise,
       resistance: ex.resistance,
       setNumber: n,
       reps: r,
       weight: Number(weight.value) || 0
-    })
+    }, 2)
       .then(() => {
         btn.textContent = '✓';
         btn.classList.add('done');
