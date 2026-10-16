@@ -51,6 +51,7 @@ button.danger { background: rgba(250, 17, 79, 0.18); color: #ff5c7f; }
 button.done { background: linear-gradient(135deg, var(--green), var(--teal)); color: #000; }
 button:disabled { opacity: 0.7; }
 button.done:disabled { opacity: 1; }
+.info { color: var(--muted); font-size: 12px; margin: -10px 0 14px; min-height: 14px; }
 .sync {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(env(safe-area-inset-bottom) + 14px);

@@ -11,7 +11,7 @@ function readJSON(name, fallback) {
 }
 
 function writeJSON(name, value) {
-  try { localStorage.setItem(name, JSON.stringify(value)); } catch (e) {}
+  try { localStorage.setItem(name, JSON.stringify(value)); return true; } catch (e) { return false; }
 }
 
 function newId() {
@@ -169,15 +169,27 @@ function showBuilder() {
 // Shows the last known list instantly, then refreshes it from the Sheet in the background.
 function loadList() {
   const list = document.getElementById('list');
+  const info = document.getElementById('listInfo'); // temporary diagnostic line
   const cached = readJSON('wt_workouts', null);
-  if (cached) renderList(cached); else list.textContent = 'Loading...';
+  const t0 = Date.now();
+  const secs = () => ((Date.now() - t0) / 1000).toFixed(1) + 's';
+  if (cached) {
+    renderList(cached);
+    info.textContent = 'Showing saved copy · checking the Sheet…';
+  } else {
+    list.textContent = 'Loading...';
+    info.textContent = 'No saved copy on this phone yet · asking the Sheet…';
+  }
   api('getWorkouts')
     .then(fresh => {
-      writeJSON('wt_workouts', fresh);
+      const saved = writeJSON('wt_workouts', fresh) && readJSON('wt_workouts', null) !== null;
+      info.textContent = 'Sheet answered in ' + secs() + ' · ' +
+        (saved ? 'copy saved on this phone' : 'could NOT save a copy on this phone');
       if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) renderList(fresh);
     })
     .catch(err => {
       if (err.message === 'Bad key') return;
+      info.textContent = 'Sheet failed after ' + secs() + ': ' + err.message;
       if (!cached) list.textContent = 'Error: ' + err.message;
     });
 }
