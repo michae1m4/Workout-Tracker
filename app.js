@@ -232,6 +232,7 @@ function showEditor(name) {
   document.getElementById('workoutName').value = name || '';
   document.getElementById('exerciseRows').textContent = '';
   document.getElementById('builderMsg').textContent = '';
+  document.getElementById('builderDelete').classList.toggle('hidden', !name);
   if (name && allWorkouts[name]) {
     allWorkouts[name].forEach(ex => addRow(ex));
   } else {
@@ -283,66 +284,48 @@ function refreshListQuietly() {
 
 function renderList(workouts) {
   allWorkouts = workouts;
-  const list = document.getElementById('list');
-  list.textContent = '';
+  const list_ = document.getElementById('list');
+  list_.textContent = '';
   const names = Object.keys(workouts);
   if (names.length === 0) {
-    list.textContent = 'No workouts yet.';
-    list.style.marginBottom = '12px';
+    list_.appendChild(el('div', 'empty', 'No workouts yet. Create one to get started.'));
+    list_.style.marginBottom = '16px';
     return;
   }
-  list.style.marginBottom = '0';
+  list_.style.marginBottom = '0';
   names.forEach(name => {
-    const card = document.createElement('div');
-    card.className = 'card';
+    const card = el('div', 'card wcard');
+    card.onclick = () => showEditor(name); // tapping the card opens the editor
 
-    // tapping the name area opens the editor
-    const head = document.createElement('div');
-    head.className = 'cardhead';
-    head.onclick = () => showEditor(name);
+    const main = el('div', 'wmain');
+    main.appendChild(el('b', '', name));
+    const list = workouts[name];
+    const shown = list.slice(0, 3).map(e => e.exercise).join(', ');
+    main.appendChild(el('div', 'wsub', shown + (list.length > 3 ? ', +' + (list.length - 3) + ' more' : '')));
 
-    const headText = document.createElement('div');
-    const title = document.createElement('b');
-    title.textContent = name;
-    const detail = document.createElement('span');
-    detail.className = 'sub';
-    detail.textContent = workouts[name].length + (workouts[name].length === 1 ? ' exercise' : ' exercises');
-    headText.appendChild(title);
-    headText.appendChild(detail);
+    const play = el('button', 'play');
+    play.setAttribute('aria-label', 'Start ' + name);
+    play.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>';
+    play.onclick = e => { e.stopPropagation(); beginWorkout(name); };
 
-    const chev = document.createElement('div');
-    chev.className = 'chev';
-    chev.textContent = '›';
-    head.appendChild(headText);
-    head.appendChild(chev);
-
-    const start = document.createElement('button');
-    start.textContent = 'Start';
-    start.onclick = () => beginWorkout(name);
-
-    const del = document.createElement('button');
-    del.className = 'danger';
-    del.textContent = 'Delete';
-    del.onclick = () => {
-      if (confirm('Delete "' + name + '"?')) {
-        const cur = readJSON('wt_workouts', {});
-        delete cur[name];
-        writeJSON('wt_workouts', cur);
-        renderList(cur);                       // gone from the screen right away
-        removeFromSchedule(name);
-        enqueueOp('deleteWorkout', { name: name }); // the Sheet catches up in the background
-      }
-    };
-
-    const actions = document.createElement('div');
-    actions.className = 'actions';
-    actions.appendChild(start);
-    actions.appendChild(del);
-
-    card.appendChild(head);
-    card.appendChild(actions);
-    list.appendChild(card);
+    card.appendChild(main);
+    card.appendChild(play);
+    list_.appendChild(card);
   });
+}
+
+// Deleting lives inside the editor, so it is hard to hit by accident.
+function deleteCurrentWorkout() {
+  const name = editingName;
+  if (!name) return;
+  if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+  const cur = readJSON('wt_workouts', {});
+  delete cur[name];
+  writeJSON('wt_workouts', cur);
+  removeFromSchedule(name);
+  editingName = null;
+  enqueueOp('deleteWorkout', { name: name }); // the Sheet catches up in the background
+  showList();
 }
 
 // ---------- history tab ----------
@@ -402,59 +385,47 @@ function renderHistory(sessions) {
   const box = document.getElementById('historyList');
   box.textContent = '';
   if (!sessions || sessions.length === 0) {
-    box.textContent = 'No completed workouts yet. Log a set and it will show up here.';
+    box.appendChild(el('div', 'empty', 'No completed workouts yet. Log a set and it will show up here.'));
     return;
   }
-  sessions.forEach(s => {
-    const card = document.createElement('div');
-    card.className = 'card';
+  const group = el('div', 'group');
+  sessions.forEach(sess => {
+    const row = el('div', 'hrow');
 
-    const head = document.createElement('div');
-    head.className = 'cardhead';
-    const text = document.createElement('div');
-    const title = document.createElement('b');
-    title.textContent = s.workout;
-    const sub = document.createElement('span');
-    sub.className = 'sub';
-    sub.textContent = prettyDate(s.date) + ' · ' + s.sets + (s.sets === 1 ? ' set' : ' sets');
-    text.appendChild(title);
-    text.appendChild(sub);
-    const chev = document.createElement('div');
-    chev.className = 'chev';
-    chev.textContent = '›';
+    const head = el('div', 'hhead');
+    const text = el('div');
+    text.appendChild(el('b', '', sess.workout));
+    text.appendChild(el('div', 'sub', prettyDate(sess.date)));
+    const right = el('div', 'hright');
+    right.appendChild(el('span', '', sess.sets + (sess.sets === 1 ? ' set' : ' sets')));
+    const chev = el('div', 'chev', '›');
+    right.appendChild(chev);
     head.appendChild(text);
-    head.appendChild(chev);
+    head.appendChild(right);
 
-    const detail = document.createElement('div');
-    detail.className = 'hdetail hidden';
-    s.exercises.forEach(e => {
-      const t = document.createElement('div');
-      t.className = 'hex';
-      t.textContent = e.exercise;
-      const r = document.createElement('span');
-      r.textContent = e.resistance;
-      t.appendChild(r);
+    const detail = el('div', 'hdetail hidden');
+    sess.exercises.forEach(e => {
+      const t = el('div', 'hex', e.exercise);
+      t.appendChild(el('span', '', e.resistance));
       detail.appendChild(t);
       e.sets.forEach(st => {
-        const line = document.createElement('div');
-        line.className = 'hset';
-        line.textContent = 'Set ' + st.set + '   ' + st.reps + ' reps × ' + (st.weight > 0 ? st.weight : 'body weight');
+        const line = el('div', 'hset');
+        line.appendChild(el('i', '', 'Set ' + st.set));
+        line.appendChild(document.createTextNode(st.reps + ' reps × ' + (st.weight > 0 ? fmtNum(st.weight) : 'body weight')));
         detail.appendChild(line);
       });
     });
-    const total = document.createElement('div');
-    total.className = 'hset hvol';
-    total.textContent = 'Total volume ' + Math.round(s.volume).toLocaleString();
-    detail.appendChild(total);
+    detail.appendChild(el('div', 'hset hvol', 'Total volume ' + Math.round(sess.volume).toLocaleString()));
 
     head.onclick = () => {
       const open = detail.classList.toggle('hidden') === false;
       chev.textContent = open ? '⌄' : '›';
     };
-    card.appendChild(head);
-    card.appendChild(detail);
-    box.appendChild(card);
+    row.appendChild(head);
+    row.appendChild(detail);
+    group.appendChild(row);
   });
+  box.appendChild(group);
 }
 
 // ---------- progress tab ----------
@@ -501,7 +472,7 @@ function summarizeDay(d) {
 }
 
 function setsText(sets) {
-  return sets.map((st, i) => 'Set ' + (i + 1) + ': ' + st.reps + ' × ' + (st.weight > 0 ? fmtNum(st.weight) : 'body weight')).join(' · ');
+  return sets.map((st, i) => 'Set ' + (i + 1) + ': ' + st.reps + ' × ' + (st.weight > 0 ? fmtNum(st.weight) : 'body weight')).join(',  ');
 }
 
 function renderProgress() {
@@ -568,7 +539,7 @@ function renderProgress() {
     body.appendChild(chartCard('Average set per workout', '',
       [{ val: 'wAvg', height: 120, ticks: 3, noX: true, name: 'Avg weight', color: 'pink' },
        { val: 'rAvg', height: 140, ticks: 3, name: 'Avg reps', color: 'teal' }], days,
-      d => ['avg set: ' + fmtNum(d.rAvg) + ' reps × ' + fmtNum(d.wAvg), ''], true));
+      d => ['avg set ' + fmtNum(d.rAvg) + ' reps × ' + fmtNum(d.wAvg), ''], true));
     body.appendChild(chartCard('Estimated one-rep max',
       '',
       [{ val: 'orm', height: 200, ticks: 4, color: 'teal' }], days,
@@ -703,7 +674,7 @@ function chartCard(title, sub, specs, days, readoutFn, legend) {
     const b = document.createElement('b');
     b.textContent = shortDate(d.date);
     readout.appendChild(b);
-    readout.appendChild(document.createTextNode(' · ' + parts[0]));
+    readout.appendChild(document.createTextNode(parts[0]));
     if (parts[1]) { readout.appendChild(document.createElement('br')); readout.appendChild(document.createTextNode(parts[1])); }
     charts.forEach(c => c.select(i));
   }
@@ -804,7 +775,7 @@ function computeUpNext(workouts, schedule, hist) {
 
 function exerciseSummary(list) {
   const names = list.map(e => e.exercise);
-  return names.length <= 3 ? names.join(' · ') : names.slice(0, 3).join(' · ') + ' · +' + (names.length - 3) + ' more';
+  return names.length <= 3 ? names.join(', ') : names.slice(0, 3).join(', ') + ', +' + (names.length - 3) + ' more';
 }
 
 // Personal bests in the last 30 days: heaviest weight (or most reps in a set for body weight exercises).
@@ -873,7 +844,7 @@ function renderHome() {
     hero.appendChild(b);
   } else {
     if (up.afterDone) hero.appendChild(el('div', 'note', '✓ Today\'s workout is done'));
-    hero.appendChild(el('div', 'chip', up.kind === 'scheduled' ? 'Scheduled · ' + up.when : 'Suggested'));
+    hero.appendChild(el('div', 'chip', up.kind === 'scheduled' ? 'Scheduled for ' + up.when.toLowerCase() : 'Suggested for you'));
     hero.appendChild(el('b', '', up.name));
     let sub = exerciseSummary(workouts[up.name]);
     if (up.kind === 'suggested') sub += '\n' + (up.last ? 'Last done ' + prettyDate(up.last) : 'Not done yet');
@@ -951,17 +922,22 @@ function renderHome() {
 
   // --- quick actions ---
   body.appendChild(el('div', 'sechead')).appendChild(el('h2', '', 'Quick actions'));
-  const quick = el('div', 'quick');
-  const create = el('button', '', '+ Create New Workout');
-  create.onclick = () => showEditor();
-  const row2 = el('div', 'row2');
-  const sch = el('button', 'secondary', 'Schedule');
-  sch.onclick = showSchedule;
-  const rest = el('button', 'secondary restToggle', 'Rest timer');
-  rest.onclick = toggleRest;
-  row2.appendChild(sch); row2.appendChild(rest);
-  quick.appendChild(create); quick.appendChild(row2);
-  body.appendChild(quick);
+  const list = el('div', 'group');
+  const rowCreate = el('div', 'lrow', 'Create new workout');
+  rowCreate.appendChild(el('span', 'chev2', '›'));
+  rowCreate.onclick = () => showEditor();
+  const rowSched = el('div', 'lrow', 'Schedule');
+  rowSched.appendChild(el('span', 'chev2', '›'));
+  rowSched.onclick = showSchedule;
+  const rowRest = el('div', 'lrow', 'Rest timer');
+  const sw = el('button', 'switch restToggle');
+  sw.setAttribute('role', 'switch');
+  sw.setAttribute('aria-label', 'Rest timer');
+  sw.onclick = e => { e.stopPropagation(); toggleRest(); };
+  rowRest.appendChild(sw);
+  rowRest.onclick = toggleRest;
+  list.appendChild(rowCreate); list.appendChild(rowSched); list.appendChild(rowRest);
+  body.appendChild(list);
   updateRestButton();
 }
 
@@ -992,7 +968,9 @@ function showSchedule() {
       sel.appendChild(o);
     }
     sel.value = current;
+    sel.className = current ? '' : 'rest';
     sel.onchange = () => {
+      sel.className = sel.value ? '' : 'rest';
       const s = getScheduleData();
       if (sel.value) s[day] = sel.value; else delete s[day];
       saveScheduleData(s);
@@ -1021,7 +999,8 @@ function startRestTimer(seconds) {
 
 function updateRestButton() {
   document.querySelectorAll('.restToggle').forEach(b => {
-    b.textContent = 'Rest timer: ' + (restOn() ? 'On' : 'Off');
+    b.classList.toggle('on', restOn());
+    b.setAttribute('aria-checked', restOn() ? 'true' : 'false');
   });
 }
 function toggleRest() {
@@ -1077,26 +1056,31 @@ function startRun(name, resume) {
   if (!resume) { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
 
   allWorkouts[name].forEach((ex, exIndex) => {
-    const card = document.createElement('div');
-    card.className = 'card';
+    const card = el('div', 'card');
 
-    const title = document.createElement('b');
-    title.textContent = ex.exercise;
-
-    const detail = document.createElement('span');
-    detail.className = 'sub';
-    detail.textContent = ex.resistance + ' · ' + ex.sets + ' sets · rest ' + ex.rest + 's';
-
-    card.appendChild(title);
-    card.appendChild(detail);
+    const head = el('div', 'exhead2');
+    const left = el('div');
+    left.appendChild(el('b', '', ex.exercise));
+    const meta = el('div', 'exmeta');
+    meta.appendChild(el('span', 'pill', ex.resistance));
+    meta.appendChild(el('span', '', ex.sets + (ex.sets === 1 ? ' set' : ' sets')));
+    left.appendChild(meta);
+    head.appendChild(left);
+    const rest = el('div', 'restchip');
+    rest.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 3h5"/></svg>';
+    rest.appendChild(document.createTextNode(ex.rest + 's'));
+    head.appendChild(rest);
+    card.appendChild(head);
 
     const last = lastTimeFor(ex.exercise);
-    if (last) {
-      const lt = document.createElement('div');
-      lt.className = 'lasttitle';
-      lt.textContent = 'Last time · ' + prettyDate(last.date);
-      card.appendChild(lt);
-    }
+    if (last) card.appendChild(el('div', 'lasttitle', 'Last time ' + prettyDate(last.date)));
+
+    const colhead = el('div', 'colhead');
+    colhead.appendChild(el('span', '', 'Set'));
+    colhead.appendChild(el('span', '', 'Reps'));
+    colhead.appendChild(el('span', '', 'Weight'));
+    colhead.appendChild(el('span', ''));
+    card.appendChild(colhead);
 
     const rows = []; // keeps each set's inputs so we can pre-fill the next one
     for (let n = 1; n <= ex.sets; n++) {
@@ -1141,7 +1125,7 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
 
   const label = document.createElement('div');
   label.className = 'setlabel';
-  label.textContent = 'Set ' + n;
+  label.textContent = n;
   if (lastSet) { // what you did in this set last time
     const hint = document.createElement('small');
     hint.textContent = lastSet.weight > 0 ? lastSet.reps + ' × ' + fmtNum(lastSet.weight) : lastSet.reps + ' reps';
@@ -1151,12 +1135,12 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
   const reps = document.createElement('input');
   reps.type = 'number';
   reps.inputMode = 'numeric';
-  reps.placeholder = 'Reps';
+  reps.placeholder = '–';
 
   const weight = document.createElement('input');
   weight.type = 'number';
   weight.inputMode = 'decimal';
-  weight.placeholder = 'Weight';
+  weight.placeholder = '–';
   if (ex.resistance === 'body weight') weight.value = 0;
   if (ex.weight) weight.value = ex.weight; // the weight you set in the editor
 
