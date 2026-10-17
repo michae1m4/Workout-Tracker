@@ -185,7 +185,18 @@ window.addEventListener('pageshow', applyStandaloneHeight);
 const TAB_VIEWS = { home: 'homeView', list: 'listView', history: 'historyView', progress: 'progressView' };
 const ALL_VIEWS = ['setupView', 'homeView', 'scheduleView', 'listView', 'historyView', 'progressView', 'builderView', 'runView'];
 
+const PUSH_VIEWS = ['builderView', 'runView', 'scheduleView'];
+function animateIn(id) {
+  const v = document.getElementById(id);
+  v.classList.remove('enter', 'enter-push');
+  void v.offsetWidth; // restart the animation
+  v.classList.add(PUSH_VIEWS.indexOf(id) !== -1 ? 'enter-push' : 'enter');
+  clearTimeout(v._enterTimer);
+  v._enterTimer = setTimeout(() => v.classList.remove('enter', 'enter-push'), 800);
+}
+
 function showOnly(id) {
+  const already = !document.getElementById(id).classList.contains('hidden');
   ALL_VIEWS.forEach(v => {
     document.getElementById(v).classList.toggle('hidden', v !== id);
   });
@@ -197,6 +208,7 @@ function showOnly(id) {
     t.classList.toggle('active', TAB_VIEWS[t.dataset.tab] === id);
   });
   window.scrollTo(0, 0);
+  if (!already) animateIn(id);
 }
 
 function showTab(tab) {
@@ -208,6 +220,8 @@ function showTab(tab) {
 }
 
 function showList() { showTab('list'); }
+let editorOrigin = 'list';   // where the editor was opened from, so Back/Save/Cancel return there
+function leaveEditor() { showTab(editorOrigin === 'home' ? 'home' : 'list'); }
 
 function showSetup(message) {
   showOnly('setupView');
@@ -224,8 +238,10 @@ function saveKey() {
 }
 
 // Opens the editor. With a name it shows that saved workout; without one it starts a new workout.
-function showEditor(name) {
+function showEditor(name, from) {
   editingName = name || null;
+  editorOrigin = from === 'home' ? 'home' : 'list';
+  document.getElementById('builderBack').textContent = editorOrigin === 'home' ? '‹ Home' : '‹ Library';
   showOnly('builderView');
   document.getElementById('builderTitle').textContent = name ? 'Edit Workout' : 'New Workout';
   document.getElementById('builderSave').textContent = name ? 'Save changes' : 'Save workout';
@@ -308,24 +324,39 @@ function renderList(workouts) {
     play.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>';
     play.onclick = e => { e.stopPropagation(); beginWorkout(name); };
 
+    const trash = el('button', 'trash');
+    trash.setAttribute('aria-label', 'Delete ' + name);
+    trash.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+    trash.onclick = e => {
+      e.stopPropagation();
+      if (deleteWorkoutByName(name)) renderList(readJSON('wt_workouts', {}));
+    };
+
     card.appendChild(main);
+    card.appendChild(trash);
     card.appendChild(play);
     list_.appendChild(card);
   });
 }
 
 // Deleting lives inside the editor, so it is hard to hit by accident.
-function deleteCurrentWorkout() {
-  const name = editingName;
-  if (!name) return;
-  if (!confirm('Delete "' + name + '"? This cannot be undone.')) return;
+// Asks first, then removes the workout here and queues the delete for the Sheet. Returns true if deleted.
+function deleteWorkoutByName(name) {
+  if (!name) return false;
+  if (!confirm('Delete "' + name + '"? This cannot be undone.')) return false;
   const cur = readJSON('wt_workouts', {});
   delete cur[name];
   writeJSON('wt_workouts', cur);
   removeFromSchedule(name);
-  editingName = null;
   enqueueOp('deleteWorkout', { name: name }); // the Sheet catches up in the background
-  showList();
+  return true;
+}
+
+function deleteCurrentWorkout() {
+  const name = editingName;
+  if (!deleteWorkoutByName(name)) return;
+  editingName = null;
+  leaveEditor();
 }
 
 // ---------- history tab ----------
@@ -403,7 +434,9 @@ function renderHistory(sessions) {
     head.appendChild(text);
     head.appendChild(right);
 
-    const detail = el('div', 'hdetail hidden');
+    const wrap = el('div', 'hwrap');
+    const detail = el('div', 'hdetail');
+    wrap.appendChild(detail);
     sess.exercises.forEach(e => {
       const t = el('div', 'hex', e.exercise);
       t.appendChild(el('span', '', e.resistance));
@@ -418,11 +451,11 @@ function renderHistory(sessions) {
     detail.appendChild(el('div', 'hset hvol', 'Total volume ' + Math.round(sess.volume).toLocaleString()));
 
     head.onclick = () => {
-      const open = detail.classList.toggle('hidden') === false;
-      chev.textContent = open ? '⌄' : '›';
+      const open = row.classList.toggle('open');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
     row.appendChild(head);
-    row.appendChild(detail);
+    row.appendChild(wrap);
     group.appendChild(row);
   });
   box.appendChild(group);
@@ -840,7 +873,7 @@ function renderHome() {
     hero.appendChild(el('span', 'sub', 'Build a workout and it will show up here.'));
     const b = el('button', 'full', '+ Create New Workout');
     b.style.marginTop = '14px';
-    b.onclick = () => showEditor();
+    b.onclick = () => showEditor(null, 'home');
     hero.appendChild(b);
   } else {
     if (up.afterDone) hero.appendChild(el('div', 'note', '✓ Today\'s workout is done'));
@@ -925,7 +958,7 @@ function renderHome() {
   const list = el('div', 'group');
   const rowCreate = el('div', 'lrow', 'Create new workout');
   rowCreate.appendChild(el('span', 'chev2', '›'));
-  rowCreate.onclick = () => showEditor();
+  rowCreate.onclick = () => showEditor(null, 'home');
   const rowSched = el('div', 'lrow', 'Schedule');
   rowSched.appendChild(el('span', 'chev2', '›'));
   rowSched.onclick = showSchedule;
@@ -1149,9 +1182,10 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
 
   const entry = { reps: reps, weight: weight, done: false };
 
-  function markDone() {
+  function markDone(animate) {
     btn.textContent = '✓';
     btn.classList.add('done');
+    if (animate) { btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
     btn.disabled = true;
     reps.disabled = true;
     weight.disabled = true;
@@ -1163,7 +1197,7 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
     if (!r || r <= 0) { reps.focus(); return; }
 
     // Mark it done right away; the save happens in the background.
-    markDone();
+    markDone(true);
 
     const next = rows[n]; // rows[n] is the next set (rows is 0-based)
     if (next) {
@@ -1341,10 +1375,10 @@ function enableDrag(handle, card) {
 }
 
 // Adds one exercise card. Pass the saved exercise to pre-fill it.
-function addRow(data) {
+function addRow(data, animate) {
   data = data || {};
   const card = document.createElement('div');
-  card.className = 'card';
+  card.className = animate ? 'card rowin' : 'card';
 
   const nameInput = document.createElement('input');
   nameInput.className = 'ex-name';
@@ -1397,7 +1431,12 @@ function addRow(data) {
   const remove = document.createElement('button');
   remove.className = 'secondary grow';
   remove.textContent = 'Remove';
-  remove.onclick = () => card.remove();
+  remove.onclick = () => {
+    card.style.height = card.offsetHeight + 'px';
+    void card.offsetWidth;
+    card.classList.add('leaving');
+    setTimeout(() => card.remove(), 260);
+  };
 
   const row1 = document.createElement('div');
   row1.className = 'row';
@@ -1418,6 +1457,7 @@ function addRow(data) {
   card.appendChild(row2);
   card.appendChild(exactions);
   document.getElementById('exerciseRows').appendChild(card);
+  if (animate) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function numOr(value, fallback, min, max) {
@@ -1475,7 +1515,7 @@ function saveCurrent() {
   editingName = null;
   msg.textContent = '';
   enqueueOp('saveWorkout', payload);        // ...let the Sheet catch up in the background...
-  showList();                               // ...and go straight back to the Library
+  leaveEditor();                            // ...and go straight back where you came from
 }
 
 // ---------- start ----------

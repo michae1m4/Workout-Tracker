@@ -384,3 +384,83 @@ button.tab.active { color: #ff5c7f; background: rgba(255,255,255,.09); box-shado
   body::before { display: none; }
   .card, .group, .tile, .tabbar, .overlay, button.secondary { background: #1c1c1e; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* ============================================================
+   MOTION
+   Short, soft and springy. Everything here is skipped for people who turn on Reduce Motion in iOS.
+   Remove this section to turn all animation off.
+   ============================================================ */
+:root { --ease: cubic-bezier(.22,.8,.24,1); --spring: cubic-bezier(.34,1.56,.64,1); }
+
+/* screens: tabs fade and rise, deeper screens slide in from the right; lists stagger in */
+@keyframes rise  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes slidein { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+.enter { animation: rise .32s var(--ease) backwards; }
+.enter-push { animation: slidein .34s var(--ease) backwards; }
+.enter #list > *, .enter #homeBody > *, .enter #historyList > *, .enter #progBody > *, .enter-push #exerciseRows > * {
+  animation: rise .44s var(--ease) backwards;
+}
+.enter #list > *:nth-child(2), .enter #homeBody > *:nth-child(2), .enter-push #exerciseRows > *:nth-child(2), .enter #progBody > *:nth-child(2) { animation-delay: .04s; }
+.enter #list > *:nth-child(3), .enter #homeBody > *:nth-child(3), .enter-push #exerciseRows > *:nth-child(3), .enter #progBody > *:nth-child(3) { animation-delay: .08s; }
+.enter #list > *:nth-child(4), .enter #homeBody > *:nth-child(4), .enter-push #exerciseRows > *:nth-child(4), .enter #progBody > *:nth-child(4) { animation-delay: .12s; }
+.enter #list > *:nth-child(5), .enter #homeBody > *:nth-child(5), .enter-push #exerciseRows > *:nth-child(5), .enter #progBody > *:nth-child(5) { animation-delay: .16s; }
+.enter #list > *:nth-child(n+6), .enter #homeBody > *:nth-child(n+6), .enter-push #exerciseRows > *:nth-child(n+6), .enter #progBody > *:nth-child(n+6) { animation-delay: .2s; }
+
+/* presses: buttons and tappable cards dip slightly, then spring back */
+button { transition: transform .22s var(--spring), opacity .2s ease, background-color .2s ease, box-shadow .2s ease; }
+button:active { transform: scale(.96); }
+button.tab:active { transform: none; }
+.wcard { transition: transform .22s var(--spring); }
+.wcard:active { transform: scale(.985); }
+button.tab { transition: color .2s ease, background-color .25s ease, box-shadow .25s ease; }
+
+/* switch: knob springs across and stretches while pressed */
+.switch { transition: background .25s ease; }
+.switch::after { transition: transform .32s var(--spring), width .18s ease; }
+.switch:active::after { width: 33px; }
+.switch.on:active::after { transform: translateX(14px); }
+
+/* History: rows expand and collapse smoothly, chevron turns */
+.hwrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .34s var(--ease); }
+.hwrap > .hdetail { overflow: hidden; min-height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; transition: opacity .25s ease, padding .34s var(--ease); }
+.hrow.open .hwrap { grid-template-rows: 1fr; }
+.hrow.open .hwrap > .hdetail { opacity: 1; padding-bottom: 16px; }
+.chev { transition: transform .3s var(--ease); }
+.hrow.open .chev { transform: rotate(90deg); }
+
+/* editor: new exercise cards pop in, removed ones fold away */
+@keyframes popin { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+.card.rowin { animation: popin .36s var(--ease) backwards; }
+.card.leaving { transition: height .26s var(--ease), opacity .2s ease, margin .26s var(--ease), padding .26s var(--ease); height: 0 !important; opacity: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; border-width: 0; }
+
+/* Log: logged set pops with a soft lime ring */
+@keyframes logpop { 0% { transform: scale(.88); } 55% { transform: scale(1.1); } 100% { transform: scale(1); } }
+@keyframes ring { from { box-shadow: 0 0 0 0 rgba(190,255,70,.55); } to { box-shadow: 0 0 0 12px rgba(190,255,70,0); } }
+.setrow button.pop { animation: logpop .36s var(--spring), ring .6s ease-out; }
+
+/* overlays and the saved/sync pill fade and scale in */
+@keyframes fadeup { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+.overlay:not(.hidden) { animation: fadeup .3s var(--ease); }
+@keyframes toastin { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.sync:not(.hidden) { animation: toastin .28s var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+}
+
+/* ---------- v25: Library delete button, switch restyle ---------- */
+button.trash { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; background: none; box-shadow: none; color: rgba(255,255,255,.45);
+  display: flex; align-items: center; justify-content: center; -webkit-backdrop-filter: none; backdrop-filter: none; }
+button.trash::before { display: none; }
+button.trash svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+button.trash:active { color: var(--red); background: rgba(250,17,79,.14); }
+
+/* switch: clear glass track with a thin rim; on = the app's accent gradient; frosted-white knob */
+button.switch { width: 52px; height: 32px; background: linear-gradient(150deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.26); }
+button.switch::after { top: 3px; left: 3px; width: 26px; height: 26px; background: linear-gradient(180deg, #fff, #ececf1); box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+button.switch.on { background: linear-gradient(135deg, rgba(250,17,79,.88), rgba(255,122,61,.84)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.34), 0 4px 14px rgba(250,17,79,.25); }
+button.switch.on::after { transform: translateX(20px); }
+button.switch:active::after { width: 32px; }
+button.switch.on:active::after { transform: translateX(14px); }
