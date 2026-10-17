@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="styles.css?v=17">
+  <link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
 
@@ -31,14 +31,22 @@
     <h1>Library</h1>
     <div id="list"></div>
     <button class="full" onclick="showEditor()">+ New workout</button>
-    <div class="ver">Version 17</div>
+    <div class="card" style="margin-top:14px">
+      <b>Rest timer</b>
+      <span class="sub">Starts an iPhone timer with each exercise's rest time when you tap Log. Needs the "Rest" shortcut.</span>
+      <div class="actions">
+        <button id="restToggle" class="secondary" onclick="toggleRest()">Rest timer: Off</button>
+        <button class="secondary" onclick="testRest()">Test (10 sec)</button>
+      </div>
+    </div>
+    <div class="ver">Version 18</div>
   </div>
 
   <!-- HISTORY TAB (placeholder for now) -->
   <div id="historyView" class="hidden">
     <h1>History</h1>
     <div id="historyList"></div>
-    <div class="ver">Version 17</div>
+    <div class="ver">Version 18</div>
   </div>
 
   <!-- PROGRESS TAB (placeholder for now) -->
@@ -46,7 +54,7 @@
     <h1>Progress</h1>
     <select id="progPick" class="hidden"></select>
     <div id="progBody" style="margin-top:14px"></div>
-    <div class="ver">Version 17</div>
+    <div class="ver">Version 18</div>
   </div>
 
   <!-- BUILDER VIEW -->
@@ -104,7 +112,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=17"></script>
-  <script src="app.js?v=17"></script>
+  <script src="config.js?v=18"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

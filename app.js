@@ -798,6 +798,37 @@ function chartCard(title, sub, specs, days, readoutFn, legend) {
   return card;
 }
 
+// ---------- rest timer (via the Apple Shortcuts app) ----------
+// Tapping Log opens a shortcut named "Rest" and passes it the rest time in seconds.
+// The shortcut starts an iPhone timer, which rings and notifies you when it ends.
+const REST_SHORTCUT = 'Rest';
+function restOn() { try { return localStorage.getItem('wt_rest') === 'on'; } catch (e) { return false; } }
+
+function openShortcut(url) { window.location.href = url; } // separate so tests can intercept it
+
+function startRestTimer(seconds) {
+  if (!restOn()) return;
+  const sec = Math.round(Number(seconds));
+  if (!sec || sec <= 0) return;
+  // a moment's delay so the tap, the green check and the save queue finish first
+  setTimeout(() => openShortcut('shortcuts://run-shortcut?name=' + encodeURIComponent(REST_SHORTCUT) +
+    '&input=text&text=' + sec), 150);
+}
+
+function updateRestButton() {
+  document.getElementById('restToggle').textContent = 'Rest timer: ' + (restOn() ? 'On' : 'Off');
+}
+function toggleRest() {
+  try { localStorage.setItem('wt_rest', restOn() ? 'off' : 'on'); } catch (e) {}
+  updateRestButton();
+}
+function testRest() {
+  const was = restOn();
+  try { localStorage.setItem('wt_rest', 'on'); } catch (e) {}
+  startRestTimer(10);
+  try { localStorage.setItem('wt_rest', was ? 'on' : 'off'); } catch (e) {}
+}
+
 // ---------- run screen ----------
 // The most recent earlier day this exercise was done (any workout), from the saved history copy.
 function lastTimeFor(exName) {
@@ -903,6 +934,7 @@ function makeSetRow(workout, ex, n, rows, lastSet) {
 
     const id = newId();
     if (currentRun) currentRun.ids.add(id); // so the finish screen can check these sets were saved
+    startRestTimer(ex.rest);
     enqueueSet({
       requestId: id,
       workout: workout,
@@ -1201,6 +1233,7 @@ if (!CONFIG.API_URL || CONFIG.API_URL.indexOf('PASTE') === 0) {
   showSetup();
 } else {
   showList();
+  updateRestButton();
   setTimeout(prefetchHistory, 1200); // after the Library has loaded
   if (loadQueue().length > 0) { updateSyncStatus(); flushQueue(); } // finish saving anything left from last time
 }
