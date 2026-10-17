@@ -123,7 +123,10 @@ async function flushQueue() {
       updateSyncStatus();
     }
     updateSyncStatus(sentAny);
-    if (sentAny && !document.getElementById('historyView').classList.contains('hidden')) loadHistory();
+    if (sentAny) {
+      if (!document.getElementById('historyView').classList.contains('hidden')) loadHistory();
+      else prefetchHistory(); // so the next visit to History already has your new workout
+    }
     if (opsChanged && !pendingOps()) refreshListQuietly();
   } finally {
     flushing = false;
@@ -289,6 +292,7 @@ function showTab(tab) {
   showOnly(TAB_VIEWS[tab]);
   if (tab === 'list') loadList();
   if (tab === 'history') loadHistory();
+  if (tab === 'progress') loadProgress();
 }
 
 function showList() { showTab('list'); }
@@ -439,16 +443,28 @@ function loadHistory() {
       box.appendChild(sk);
     }
   }
-  api('getHistory')
+  api('getHistory', { limit: 400 })
     .then(fresh => {
       if (loadQueue().some(i => !i.op)) return; // sets still waiting to be sent: the Sheet is behind
       writeJSON('wt_history', fresh);
       if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) renderHistory(fresh);
+      if (!document.getElementById('progressView').classList.contains('hidden')) renderProgress();
     })
     .catch(err => {
       if (err.message === 'Bad key') return;
       if (!cached) box.textContent = 'Error: ' + err.message;
     });
+}
+
+// Quietly fetch history ahead of time so the History tab opens instantly.
+function prefetchHistory() {
+  if (!getKey() || loadQueue().some(i => !i.op)) return;
+  api('getHistory', { limit: 400 }).then(fresh => {
+    if (loadQueue().some(i => !i.op)) return;
+    writeJSON('wt_history', fresh);
+    if (!document.getElementById('historyView').classList.contains('hidden')) renderHistory(fresh);
+    if (!document.getElementById('progressView').classList.contains('hidden')) renderProgress();
+  }).catch(() => {});
 }
 
 function prettyDate(iso) {
@@ -519,6 +535,209 @@ function renderHistory(sessions) {
     card.appendChild(detail);
     box.appendChild(card);
   });
+}
+
+// ---------- progress tab ----------
+// Built from the same history copy the History tab uses (no extra server call needed).
+const SVGNS = 'http://www.w3.org/2000/svg';
+let progressSeries = [];
+
+function loadProgress() {
+  const cached = readJSON('wt_history', null);
+  if (cached) { renderProgress(); return; }
+  document.getElementById('progBody').textContent = 'Loading…';
+  api('getHistory', { limit: 400 })
+    .then(fresh => { writeJSON('wt_history', fresh); renderProgress(); })
+    .catch(err => { if (err.message !== 'Bad key') document.getElementById('progBody').textContent = 'Error: ' + err.message; });
+}
+
+// Per exercise, per day: heaviest weight, total reps, volume (reps x weight).
+function buildExerciseData(sessions) {
+  const ex = {};
+  (sessions || []).forEach(s => {
+    s.exercises.forEach(e => {
+      const rec = ex[e.exercise] = ex[e.exercise] || { name: e.exercise, days: {}, last: '' };
+      const d = rec.days[s.date] = rec.days[s.date] || { date: s.date, top: 0, reps: 0, volume: 0 };
+      e.sets.forEach(st => {
+        d.top = Math.max(d.top, st.weight);
+        d.reps += st.reps;
+        d.volume += st.reps * st.weight;
+      });
+      if (s.date > rec.last) rec.last = s.date;
+    });
+  });
+  return ex;
+}
+
+function renderProgress() {
+  const body = document.getElementById('progBody');
+  const pick = document.getElementById('progPick');
+  const ex = buildExerciseData(readJSON('wt_history', []));
+  const names = Object.keys(ex).sort((a, b) => ex[a].last < ex[b].last ? 1 : ex[a].last > ex[b].last ? -1 : 0);
+  if (names.length === 0) {
+    pick.classList.add('hidden');
+    body.textContent = 'No data yet. Log a workout and your progress charts will appear here.';
+    return;
+  }
+  let chosen = '';
+  try { chosen = localStorage.getItem('wt_prog_ex') || ''; } catch (e) {}
+  if (!ex[chosen]) chosen = names[0];
+  pick.classList.remove('hidden');
+  pick.textContent = '';
+  names.forEach(n => {
+    const o = document.createElement('option');
+    o.value = n; o.textContent = n;
+    if (n === chosen) o.selected = true;
+    pick.appendChild(o);
+  });
+  pick.onchange = () => {
+    try { localStorage.setItem('wt_prog_ex', pick.value); } catch (e) {}
+    renderProgress();
+  };
+
+  const days = Object.keys(ex[chosen].days).sort().map(k => ex[chosen].days[k]);
+  const bodyweightOnly = days.every(d => d.top === 0);
+  body.textContent = '';
+
+  // headline numbers
+  const first = days[0], last = days[days.length - 1];
+  const key = bodyweightOnly ? 'reps' : 'top';
+  const unit = bodyweightOnly ? ' reps' : '';
+  const best = Math.max.apply(null, days.map(d => d[key]));
+  const change = last[key] - first[key];
+  const tiles = document.createElement('div');
+  tiles.className = 'tiles';
+  [[days.length, days.length === 1 ? 'session' : 'sessions'],
+   [fmtNum(best) + unit, bodyweightOnly ? 'best day' : 'best weight'],
+   [(change > 0 ? '+' : '') + fmtNum(change) + unit, days.length > 1 ? 'since first' : 'change']
+  ].forEach(t => {
+    const d = document.createElement('div');
+    d.className = 'tile';
+    const v = document.createElement('b'); v.textContent = t[0];
+    const l = document.createElement('span'); l.textContent = t[1];
+    d.appendChild(v); d.appendChild(l);
+    tiles.appendChild(d);
+  });
+  body.appendChild(tiles);
+
+  if (bodyweightOnly) {
+    body.appendChild(makeChart('Total reps per session', days.map(d => ({ date: d.date, v: d.reps })), ''));
+  } else {
+    body.appendChild(makeChart('Heaviest weight per session', days.map(d => ({ date: d.date, v: d.top })), ''));
+    body.appendChild(makeChart('Total volume per session', days.map(d => ({ date: d.date, v: d.volume })), ''));
+  }
+}
+
+function fmtNum(n) {
+  return (Math.round(n * 10) / 10).toLocaleString();
+}
+
+function dayNumber(iso) {
+  const p = iso.split('-');
+  return Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])) / 86400000;
+}
+
+function shortDate(iso) {
+  const p = iso.split('-');
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function niceTicks(lo, hi, want) {
+  const span = hi - lo;
+  const raw = span / want;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(st => st >= raw);
+  const start = Math.floor(lo / step) * step;
+  const ticks = [];
+  for (let t = start; t <= hi + step * 0.001; t += step) ticks.push(Math.round(t * 1000) / 1000);
+  return ticks;
+}
+
+function svgEl(name, attrs) {
+  const e = document.createElementNS(SVGNS, name);
+  Object.keys(attrs || {}).forEach(k => e.setAttribute(k, attrs[k]));
+  return e;
+}
+
+// A simple line chart. pts = [{ date: 'YYYY-MM-DD', v: number }]. Touch or hover shows the value.
+function makeChart(title, pts) {
+  const card = document.createElement('div');
+  card.className = 'card chartcard';
+  const h = document.createElement('b');
+  h.textContent = title;
+  card.appendChild(h);
+
+  const W = 340, H = 190, L = 40, R = 14, T = 12, B = 26;
+  const vals = pts.map(p => p.v);
+  let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  if (lo === hi) { const pad = Math.max(1, Math.abs(hi) * 0.1); lo -= pad; hi += pad; }
+  else { const pad = (hi - lo) * 0.15; lo = Math.max(0, lo - pad); hi += pad; }
+  const ticks = niceTicks(lo, hi, 3);
+  lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+  const d0 = dayNumber(pts[0].date), d1 = dayNumber(pts[pts.length - 1].date);
+  const X = p => pts.length === 1 || d1 === d0 ? (L + (W - L - R) / 2) : L + (dayNumber(p.date) - d0) / (d1 - d0) * (W - L - R);
+  const Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+
+  const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'chart', role: 'img' });
+  svg.setAttribute('aria-label', title + ': ' + pts.map(p => shortDate(p.date) + ' ' + fmtNum(p.v)).join(', '));
+  ticks.forEach(t => {
+    svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: Y(t), y2: Y(t), class: 'grid' }));
+    const tx = svgEl('text', { x: L - 6, y: Y(t) + 4, class: 'axis', 'text-anchor': 'end' });
+    tx.textContent = fmtNum(t);
+    svg.appendChild(tx);
+  });
+  // x labels: first, last (and middle when there is room)
+  const xl = pts.length === 1 ? [pts[0]] : [pts[0], pts[pts.length - 1]];
+  xl.forEach((p, i) => {
+    const anchor = pts.length === 1 ? 'middle' : (i === 0 ? 'start' : 'end');
+    const tx = svgEl('text', { x: pts.length === 1 ? X(p) : (i === 0 ? L : W - R), y: H - 6, class: 'axis', 'text-anchor': anchor });
+    tx.textContent = shortDate(p.date);
+    svg.appendChild(tx);
+  });
+  if (pts.length > 1) {
+    svg.appendChild(svgEl('polyline', { points: pts.map(p => X(p) + ',' + Y(p.v)).join(' '), class: 'line' }));
+  }
+  pts.forEach(p => {
+    svg.appendChild(svgEl('circle', { cx: X(p), cy: Y(p.v), r: 4.5, class: 'dot' }));
+  });
+  // direct label on the latest point
+  const lp = pts[pts.length - 1];
+  const lt = svgEl('text', { x: Math.min(X(lp), W - R - 2), y: Y(lp.v) - 10, class: 'valabel', 'text-anchor': pts.length === 1 ? 'middle' : 'end' });
+  lt.textContent = fmtNum(lp.v);
+  svg.appendChild(lt);
+
+  // hover / touch layer
+  const cross = svgEl('line', { y1: T, y2: H - B, class: 'cross', visibility: 'hidden' });
+  const ring = svgEl('circle', { r: 7, class: 'ring', visibility: 'hidden' });
+  svg.appendChild(cross); svg.appendChild(ring);
+  const tip = document.createElement('div');
+  tip.className = 'tip hidden';
+  function show(clientX) {
+    const r = svg.getBoundingClientRect();
+    const x = (clientX - r.left) / r.width * W;
+    let best = pts[0];
+    pts.forEach(p => { if (Math.abs(X(p) - x) < Math.abs(X(best) - x)) best = p; });
+    cross.setAttribute('x1', X(best)); cross.setAttribute('x2', X(best)); cross.setAttribute('visibility', 'visible');
+    ring.setAttribute('cx', X(best)); ring.setAttribute('cy', Y(best.v)); ring.setAttribute('visibility', 'visible');
+    tip.textContent = shortDate(best.date) + ' · ' + fmtNum(best.v);
+    tip.classList.remove('hidden');
+    const px = X(best) / W * r.width;
+    tip.style.left = Math.max(40, Math.min(r.width - 40, px)) + 'px';
+  }
+  function hide() {
+    cross.setAttribute('visibility', 'hidden'); ring.setAttribute('visibility', 'hidden'); tip.classList.add('hidden');
+  }
+  svg.addEventListener('pointerdown', e => show(e.clientX));
+  svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons) show(e.clientX); });
+  svg.addEventListener('pointerleave', hide);
+  svg.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') setTimeout(hide, 1500); });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'chartwrap';
+  wrap.appendChild(svg);
+  wrap.appendChild(tip);
+  card.appendChild(wrap);
+  return card;
 }
 
 // ---------- run screen ----------
@@ -894,5 +1113,6 @@ if (!CONFIG.API_URL || CONFIG.API_URL.indexOf('PASTE') === 0) {
   showSetup();
 } else {
   showList();
+  setTimeout(prefetchHistory, 1200); // after the Library has loaded
   if (loadQueue().length > 0) { updateSyncStatus(); flushQueue(); } // finish saving anything left from last time
 }

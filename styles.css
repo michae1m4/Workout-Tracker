@@ -152,3 +152,22 @@ button.back { background: none; color: var(--pink); padding: 8px 0; margin: 0 0 
 .hex span { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 8px; }
 .hset { color: #d1d1d6; font-size: 15px; margin-top: 6px; font-variant-numeric: tabular-nums; white-space: pre; }
 .hvol { color: var(--muted); margin-top: 12px; }
+
+/* ---------- progress charts ---------- */
+select { -webkit-appearance: none; appearance: none; font-weight: 600; }
+.tiles { display: flex; gap: 10px; margin-bottom: 12px; }
+.tile { flex: 1; background: var(--card); border-radius: 16px; padding: 12px 8px; text-align: center; min-width: 0; }
+.tile b { display: block; font-size: 20px; font-weight: 800; }
+.tile span { color: var(--muted); font-size: 12px; }
+.chartcard b { margin-bottom: 8px; }
+.chartwrap { position: relative; }
+.chart { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.chart .grid { stroke: rgba(255,255,255,0.08); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; font-family: -apple-system, sans-serif; }
+.chart .line { fill: none; stroke: var(--pink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .dot { fill: var(--pink); stroke: var(--card); stroke-width: 2; }
+.chart .valabel { fill: var(--text); font-size: 12px; font-weight: 700; font-family: -apple-system, sans-serif; }
+.chart .cross { stroke: rgba(255,255,255,0.3); stroke-width: 1; }
+.chart .ring { fill: none; stroke: var(--text); stroke-width: 1.5; }
+.tip { position: absolute; top: -4px; transform: translateX(-50%); background: #2c2c2e; color: #fff; font-size: 13px; font-weight: 600;
+  padding: 5px 10px; border-radius: 10px; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,.5); }

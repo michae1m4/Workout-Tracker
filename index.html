@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
 
@@ -31,23 +31,22 @@
     <h1>Library</h1>
     <div id="list"></div>
     <button class="full" onclick="showEditor()">+ New workout</button>
-    <div class="ver">Version 13</div>
+    <div class="ver">Version 15</div>
   </div>
 
   <!-- HISTORY TAB (placeholder for now) -->
   <div id="historyView" class="hidden">
     <h1>History</h1>
     <div id="historyList"></div>
-    <div class="ver">Version 13</div>
+    <div class="ver">Version 15</div>
   </div>
 
   <!-- PROGRESS TAB (placeholder for now) -->
   <div id="progressView" class="hidden">
     <h1>Progress</h1>
-    <div class="card">
-      <b>Coming soon</b>
-      <span class="sub">Charts for each exercise will show up here.</span>
-    </div>
+    <select id="progPick" class="hidden"></select>
+    <div id="progBody" style="margin-top:14px"></div>
+    <div class="ver">Version 15</div>
   </div>
 
   <!-- BUILDER VIEW -->
@@ -105,7 +104,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=13"></script>
-  <script src="app.js?v=13"></script>
+  <script src="config.js?v=15"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
