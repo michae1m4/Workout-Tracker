@@ -45,7 +45,6 @@ h1 { font-size: 32px; font-weight: 800; margin: 8px 0 18px; letter-spacing: -0.5
 .handle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .card.shifting { transition: transform 0.15s ease; }
 .card.dragging { position: relative; z-index: 5; background: #2a2a2d; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75); }
-.info { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 10px; word-break: break-word; }
 label {
   display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px;
   text-transform: uppercase; letter-spacing: 0.5px;
@@ -144,7 +143,6 @@ body.has-tabs .sync { bottom: calc(env(safe-area-inset-bottom) + 84px); }
 
 button.back { background: none; color: var(--pink); padding: 8px 0; margin: 0 0 2px; font-size: 17px; font-weight: 500; }
 .ver { text-align: center; color: #48484a; font-size: 12px; margin-top: 18px; }
-#healer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; visibility: hidden; pointer-events: none; }
 
 /* ---------- history details ---------- */
 .hdetail { margin-top: 12px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); }
@@ -154,7 +152,11 @@ button.back { background: none; color: var(--pink); padding: 8px 0; margin: 0 0 
 .hvol { color: var(--muted); margin-top: 12px; }
 
 /* ---------- progress charts ---------- */
-select { -webkit-appearance: none; appearance: none; font-weight: 600; }
+select {
+  -webkit-appearance: none; appearance: none; font-weight: 600; padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1.5 1.5L7 7l5.5-5.5' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 16px center;
+}
 .tiles { display: flex; gap: 10px; margin-bottom: 12px; }
 .tile { flex: 1; background: var(--card); border-radius: 16px; padding: 12px 8px; text-align: center; min-width: 0; }
 .tile b { display: block; font-size: 20px; font-weight: 800; }
@@ -169,8 +171,6 @@ select { -webkit-appearance: none; appearance: none; font-weight: 600; }
 .chart .valabel { fill: var(--text); font-size: 12px; font-weight: 700; font-family: -apple-system, sans-serif; }
 .chart .cross { stroke: rgba(255,255,255,0.3); stroke-width: 1; }
 .chart .ring { fill: none; stroke: var(--text); stroke-width: 1.5; }
-.tipold { position: absolute; top: -4px; transform: translateX(-50%); background: #2c2c2e; color: #fff; font-size: 13px; font-weight: 600;
-  padding: 5px 10px; border-radius: 10px; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
 
 .chart .band { stroke: rgba(250,17,79,.30); stroke-width: 4; stroke-linecap: round; }
 .chart .band.teal { stroke: rgba(30,227,207,.30); }
@@ -186,3 +186,46 @@ select { -webkit-appearance: none; appearance: none; font-weight: 600; }
 
 .setlabel small { display: block; font-size: 11px; font-weight: 500; color: #a1a1a6; margin-top: 1px; white-space: nowrap; }
 .lasttitle { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+/* ---------- home ---------- */
+.homedate { color: var(--muted); font-size: 15px; margin: -10px 0 16px; line-height: 1.4; }
+.hero { background: linear-gradient(135deg, rgba(250,17,79,.28), rgba(255,122,61,.20)); border: 1px solid rgba(255,122,61,.25); }
+.hero .chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: #fff; background: rgba(0,0,0,.35); padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
+.hero b { font-size: 24px; letter-spacing: -.3px; }
+.hero .sub { display: block; margin-top: 4px; line-height: 1.4; }
+.hero .note { color: var(--green); font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.sechead { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 4px 10px; }
+.sechead h2 { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -.3px; }
+button.link { background: none; color: var(--pink); padding: 4px 0; font-size: 15px; font-weight: 600; }
+.week { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.wday { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600; flex: 1; }
+.wday .dot { width: 30px; height: 30px; border-radius: 50%; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; background: var(--field); color: #000; }
+.wday.done .dot { background: linear-gradient(135deg, var(--pink), var(--orange)); }
+.wday.sched .dot { background: none; border: 2px dashed #636366; }
+.wday.sched.missed .dot { border-color: #3a3a3c; }
+.wday.today { color: var(--text); }
+.wday.today .dot { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--pink); }
+.weeksum { color: var(--muted); font-size: 14px; }
+.pbrow { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); cursor: pointer; }
+.pbrow:first-child { border-top: 0; padding-top: 0; }
+.pbrow:last-child { padding-bottom: 0; }
+.pbrow b { display: block; font-size: 16px; margin: 0; }
+.pbrow span { color: var(--muted); font-size: 13px; }
+.pbval { color: var(--green); font-weight: 800; font-size: 17px; text-align: right; }
+.pbval small { display: block; color: var(--muted); font-size: 12px; font-weight: 500; }
+.quick { display: flex; flex-direction: column; gap: 10px; }
+.quick .row2 { display: flex; gap: 10px; }
+.quick .row2 button { flex: 1; }
+.resume { border: 1px solid rgba(164,255,60,.35); background: rgba(164,255,60,.08); }
+.resume .actions { margin-top: 12px; }
+.schedrow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.schedrow:first-child { border-top: 0; }
+.schedrow .dname { width: 96px; font-weight: 600; font-size: 16px; }
+.schedrow.today .dname { color: var(--pink); }
+.schedrow select { flex: 1; }
+.empty { color: var(--muted); font-size: 14px; line-height: 1.4; }
+
+.wday.done .dot { color: #fff; }
+.hero .actions, .resume .actions { margin-top: 12px; }

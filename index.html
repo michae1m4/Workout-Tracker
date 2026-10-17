@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
 
@@ -26,27 +26,36 @@
     </div>
   </div>
 
+  <!-- HOME TAB -->
+  <div id="homeView" class="hidden">
+    <h1 id="homeTitle">Home</h1>
+    <div id="homeDate" class="homedate"></div>
+    <div id="homeBody"></div>
+    <div class="ver">Version 21</div>
+  </div>
+
+  <!-- SCHEDULE SCREEN -->
+  <div id="scheduleView" class="hidden">
+    <button class="back" onclick="showTab('home')">‹ Home</button>
+    <h1>Schedule</h1>
+    <div class="homedate">Pick the workout you plan to do each day. It repeats every week.</div>
+    <div id="scheduleRows" class="card"></div>
+    <div class="ver">Version 21</div>
+  </div>
+
   <!-- LIBRARY TAB -->
   <div id="listView" class="hidden">
     <h1>Library</h1>
     <div id="list"></div>
-    <button class="full" onclick="showEditor()">+ New workout</button>
-    <div class="card" style="margin-top:14px">
-      <b>Rest timer</b>
-      <span class="sub">Starts an iPhone timer with each exercise's rest time when you tap Log. Needs the "Rest" shortcut.</span>
-      <div class="actions">
-        <button id="restToggle" class="secondary" onclick="toggleRest()">Rest timer: Off</button>
-        <button class="secondary" onclick="testRest()">Test (10 sec)</button>
-      </div>
-    </div>
-    <div class="ver">Version 18</div>
+    <button class="full" onclick="showEditor()">+ Create New Workout</button>
+    <div class="ver">Version 21</div>
   </div>
 
   <!-- HISTORY TAB (placeholder for now) -->
   <div id="historyView" class="hidden">
     <h1>History</h1>
     <div id="historyList"></div>
-    <div class="ver">Version 18</div>
+    <div class="ver">Version 21</div>
   </div>
 
   <!-- PROGRESS TAB (placeholder for now) -->
@@ -54,7 +63,7 @@
     <h1>Progress</h1>
     <select id="progPick" class="hidden"></select>
     <div id="progBody" style="margin-top:14px"></div>
-    <div class="ver">Version 18</div>
+    <div class="ver">Version 21</div>
   </div>
 
   <!-- BUILDER VIEW -->
@@ -92,6 +101,10 @@
 
   <!-- BOTTOM TAB BAR -->
   <nav id="tabBar" class="tabbar hidden">
+    <button class="tab" data-tab="home" onclick="showTab('home')">
+      <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg>
+      <span>Home</span>
+    </button>
     <button class="tab" data-tab="list" onclick="showTab('list')">
       <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/></svg>
       <span>Library</span>
@@ -106,13 +119,10 @@
     </button>
   </nav>
 
-  <!-- invisible full-screen element, used to make iOS re-measure the screen after typing -->
-  <div id="healer" aria-hidden="true"></div>
-
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=18"></script>
-  <script src="app.js?v=18"></script>
+  <script src="config.js?v=21"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

@@ -165,94 +165,6 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && loadQueue().length > 0) flushQueue();
 });
 
-// ---------- iPhone Home Screen app: fix the screen height after typing ----------
-// iOS bug: after the keyboard has been used in a Home Screen app, the page keeps thinking the screen
-// is shorter (59px on your phone), so the tab bar floats above the bottom. We try several ways to
-// make iOS measure the screen again, stop at the first one that works, and remember it.
-let maxInnerH = 0, lastInnerW = 0, healCount = 0, healFails = 0, healTimer = null, healing = false;
-const healLog = {}; // which methods were tried and whether they worked
-
-function viewportShrunk() {
-  if (!navigator.standalone) return false;                    // only Home Screen apps have this bug
-  if (window.innerWidth !== lastInnerW) { lastInnerW = window.innerWidth; maxInnerH = 0; } // rotated
-  maxInnerH = Math.max(maxInnerH, window.innerHeight);
-  let full = maxInnerH;
-  if (window.innerHeight > window.innerWidth) full = Math.max(full, screen.height); // portrait
-  return full - window.innerHeight > 4;
-}
-
-const HEALERS = [
-  { id: 'A', run: done => {                                   // redo the page layout
-      document.getElementById('healer').style.display = 'none';
-      document.body.style.display = 'none';
-      void document.body.offsetHeight;
-      document.body.style.display = '';
-      document.getElementById('healer').style.display = '';
-      done();
-  } },
-  { id: 'B', run: done => {                                   // re-apply the screen settings
-      const m = document.querySelector('meta[name="viewport"]');
-      if (!m) { done(); return; }
-      const orig = m.getAttribute('content');
-      m.setAttribute('content', 'width=device-width, initial-scale=1');
-      setTimeout(() => { m.setAttribute('content', orig); done(); }, 80);
-  } },
-  { id: 'C', run: done => {                                   // nudge the page height
-      const de = document.documentElement;
-      de.style.height = 'calc(100% + 1px)';
-      void de.offsetHeight;
-      de.style.height = '';
-      done();
-  } },
-  { id: 'D', run: done => {                                   // nudge the scroll position
-      window.scrollTo(0, 1);
-      setTimeout(() => { window.scrollTo(0, 0); done(); }, 60);
-  } }
-];
-
-function healViewport() {
-  if (healing) return;
-  const a = document.activeElement;
-  if (a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) return; // keyboard is up
-  if (!viewportShrunk()) { healFails = 0; return; }
-  if (healFails >= 2) return;                                 // nothing worked twice; stop trying
-  healing = true;
-  healCount++;
-  const y = window.pageYOffset;
-  let pref = '';
-  try { pref = localStorage.getItem('wt_heal') || ''; } catch (e) {}
-  const order = HEALERS.slice().sort((p, q) => (q.id === pref) - (p.id === pref)); // best-known first
-  let i = 0;
-  const next = () => {
-    if (i >= order.length) { healing = false; healFails++; return; }
-    const h = order[i++];
-    h.run(() => setTimeout(() => {
-      if (!viewportShrunk()) {
-        healLog[h.id] = 'worked';
-        try { localStorage.setItem('wt_heal', h.id); } catch (e) {}
-        healing = false; healFails = 0;
-        window.scrollTo(0, y);
-      } else {
-        healLog[h.id] = 'no';
-        next();
-      }
-    }, 120));
-  };
-  next();
-}
-
-function scheduleHeal(delay) {
-  clearTimeout(healTimer);
-  healTimer = setTimeout(healViewport, delay || 200);
-}
-
-document.addEventListener('focusout', () => scheduleHeal(250));
-window.addEventListener('resize', () => scheduleHeal(250));
-window.addEventListener('pageshow', () => scheduleHeal(100));
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') scheduleHeal(100);
-});
-
 // ---------- Home Screen app: keep the page slightly taller than the screen ----------
 // On iPhones, a Home Screen app whose page is no taller than the screen can end up with the tab bar
 // floating above the bottom (iOS measures the screen 59px too short). Found with the bar test: the bar
@@ -270,8 +182,8 @@ window.addEventListener('orientationchange', applyStandaloneHeight);
 window.addEventListener('pageshow', applyStandaloneHeight);
 
 // ---------- switching screens ----------
-const TAB_VIEWS = { list: 'listView', history: 'historyView', progress: 'progressView' };
-const ALL_VIEWS = ['setupView', 'listView', 'historyView', 'progressView', 'builderView', 'runView'];
+const TAB_VIEWS = { home: 'homeView', list: 'listView', history: 'historyView', progress: 'progressView' };
+const ALL_VIEWS = ['setupView', 'homeView', 'scheduleView', 'listView', 'historyView', 'progressView', 'builderView', 'runView'];
 
 function showOnly(id) {
   ALL_VIEWS.forEach(v => {
@@ -284,12 +196,12 @@ function showOnly(id) {
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', TAB_VIEWS[t.dataset.tab] === id);
   });
-  if (isTab) scheduleHeal(60);
   window.scrollTo(0, 0);
 }
 
 function showTab(tab) {
   showOnly(TAB_VIEWS[tab]);
+  if (tab === 'home') loadHome();
   if (tab === 'list') loadList();
   if (tab === 'history') loadHistory();
   if (tab === 'progress') loadProgress();
@@ -307,7 +219,7 @@ function saveKey() {
   const key = document.getElementById('keyInput').value.trim();
   if (!key) return;
   try { localStorage.setItem('wt_key', key); } catch (e) {}
-  showList();
+  showTab('home');
   if (loadQueue().length > 0) flushQueue();
 }
 
@@ -347,6 +259,7 @@ function loadList() {
     .then(fresh => {
       if (pendingOps()) return; // unsent edits on this phone are newer than what the Sheet has
       writeJSON('wt_workouts', fresh);
+      if (homeVisible()) renderHome();
       if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) renderList(fresh);
     })
     .catch(err => {
@@ -356,10 +269,13 @@ function loadList() {
 }
 
 // After queued edits have reached the Sheet, re-read it so this phone matches exactly.
+function homeVisible() { return !document.getElementById('homeView').classList.contains('hidden'); }
+
 function refreshListQuietly() {
   api('getWorkouts').then(fresh => {
     if (pendingOps()) return;
     writeJSON('wt_workouts', fresh);
+    if (homeVisible()) renderHome();
     if (!document.getElementById('listView').classList.contains('hidden') &&
         JSON.stringify(fresh) !== JSON.stringify(allWorkouts)) renderList(fresh);
   }).catch(() => {});
@@ -402,7 +318,7 @@ function renderList(workouts) {
 
     const start = document.createElement('button');
     start.textContent = 'Start';
-    start.onclick = () => startRun(name);
+    start.onclick = () => beginWorkout(name);
 
     const del = document.createElement('button');
     del.className = 'danger';
@@ -413,6 +329,7 @@ function renderList(workouts) {
         delete cur[name];
         writeJSON('wt_workouts', cur);
         renderList(cur);                       // gone from the screen right away
+        removeFromSchedule(name);
         enqueueOp('deleteWorkout', { name: name }); // the Sheet catches up in the background
       }
     };
@@ -432,7 +349,7 @@ function renderList(workouts) {
 // Same idea as the Library: show the saved copy instantly, then refresh from the Sheet.
 function loadHistory() {
   const box = document.getElementById('historyList');
-  const cached = readJSON('wt_history', null);
+  const cached = Array.isArray(readJSON('wt_history', null)) ? readJSON('wt_history', null) : null;
   if (cached) {
     renderHistory(cached);
   } else {
@@ -446,7 +363,9 @@ function loadHistory() {
   api('getHistory', { limit: 400 })
     .then(fresh => {
       if (loadQueue().some(i => !i.op)) return; // sets still waiting to be sent: the Sheet is behind
+      if (!Array.isArray(fresh)) return;
       writeJSON('wt_history', fresh);
+      if (homeVisible()) renderHome();
       if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) renderHistory(fresh);
       if (!document.getElementById('progressView').classList.contains('hidden')) renderProgress();
     })
@@ -460,8 +379,9 @@ function loadHistory() {
 function prefetchHistory() {
   if (!getKey() || loadQueue().some(i => !i.op)) return;
   api('getHistory', { limit: 400 }).then(fresh => {
-    if (loadQueue().some(i => !i.op)) return;
+    if (loadQueue().some(i => !i.op) || !Array.isArray(fresh)) return;
     writeJSON('wt_history', fresh);
+    if (homeVisible()) renderHome();
     if (!document.getElementById('historyView').classList.contains('hidden')) renderHistory(fresh);
     if (!document.getElementById('progressView').classList.contains('hidden')) renderProgress();
   }).catch(() => {});
@@ -543,11 +463,10 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 let progressSeries = [];
 
 function loadProgress() {
-  const cached = readJSON('wt_history', null);
-  if (cached) { renderProgress(); return; }
+  if (Array.isArray(readJSON('wt_history', null))) { renderProgress(); return; }
   document.getElementById('progBody').textContent = 'Loading…';
   api('getHistory', { limit: 400 })
-    .then(fresh => { writeJSON('wt_history', fresh); renderProgress(); })
+    .then(fresh => { if (Array.isArray(fresh)) writeJSON('wt_history', fresh); renderProgress(); })
     .catch(err => { if (err.message !== 'Bad key') document.getElementById('progBody').textContent = 'Error: ' + err.message; });
 }
 
@@ -588,7 +507,7 @@ function setsText(sets) {
 function renderProgress() {
   const body = document.getElementById('progBody');
   const pick = document.getElementById('progPick');
-  const ex = buildExerciseData(readJSON('wt_history', []));
+  const ex = buildExerciseData(savedHistory());
   const names = Object.keys(ex).sort((a, b) => ex[a].last < ex[b].last ? 1 : ex[a].last > ex[b].last ? -1 : 0);
   if (names.length === 0) {
     pick.classList.add('hidden');
@@ -798,6 +717,291 @@ function chartCard(title, sub, specs, days, readoutFn, legend) {
   return card;
 }
 
+// ---------- home tab ----------
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function localISO(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// The weekly schedule: { Monday: 'Push Day', ... }. Days that are missing are rest days.
+function getScheduleData() {
+  const s = readJSON('wt_schedule', {});
+  return (s && typeof s === 'object' && !Array.isArray(s)) ? s : {};
+}
+function saveScheduleData(sched) {
+  writeJSON('wt_schedule', sched);           // this phone first...
+  enqueueOp('setSchedule', { schedule: sched }); // ...then the Sheet, in the background
+}
+function renameInSchedule(oldName, newName) {
+  const s = getScheduleData();
+  let changed = false;
+  Object.keys(s).forEach(d => { if (s[d] === oldName) { s[d] = newName; changed = true; } });
+  if (changed) saveScheduleData(s);
+}
+function removeFromSchedule(name) {
+  const s = getScheduleData();
+  let changed = false;
+  Object.keys(s).forEach(d => { if (s[d] === name) { delete s[d]; changed = true; } });
+  if (changed) saveScheduleData(s);
+}
+
+let lastHomeFetch = 0;
+function loadHome() {
+  renderHome(); // instantly, from what is saved on this phone
+  const now = Date.now();
+  if (now - lastHomeFetch < 30000) return; // refreshed very recently
+  lastHomeFetch = now;
+  refreshListQuietly();
+  if (!pendingOps()) {
+    api('getSchedule').then(fresh => {
+      if (pendingOps() || !fresh || typeof fresh !== 'object' || Array.isArray(fresh)) return;
+      writeJSON('wt_schedule', fresh);
+      if (homeVisible()) renderHome();
+    }).catch(() => {});
+  }
+  prefetchHistory();
+}
+
+// What to show under "Up Next": today's scheduled workout, else the next scheduled one,
+// else the workout you haven't done for the longest time.
+function computeUpNext(workouts, schedule, hist) {
+  const names = Object.keys(workouts);
+  if (names.length === 0) return { kind: 'none' };
+  const now = new Date();
+  const todayIdx = (now.getDay() + 6) % 7; // Monday = 0
+  const today = localISO(now);
+  const doneToday = new Set(hist.filter(x => x.date === today).map(x => x.workout));
+  doneTodayNames().forEach(n => doneToday.add(n));
+  loadQueue().forEach(i => { if (!i.op && i.workout) doneToday.add(i.workout); }); // sets still being sent
+  const sched = idx => { const n = schedule[DAYS[idx % 7]]; return n && workouts[n] ? n : ''; };
+  const t = sched(todayIdx);
+  if (t && !doneToday.has(t)) return { kind: 'scheduled', name: t, when: 'Today' };
+  for (let k = 1; k <= 7; k++) {
+    const n = sched(todayIdx + k);
+    if (n) {
+      const dayName = DAYS[(todayIdx + k) % 7];
+      return { kind: 'scheduled', name: n, when: k === 1 ? 'Tomorrow' : (k === 7 ? 'Next ' + dayName : dayName), afterDone: !!t };
+    }
+  }
+  // nothing scheduled: suggest what you did longest ago (never done comes first)
+  const lastDone = {};
+  hist.forEach(x => { if (!lastDone[x.workout] || x.date > lastDone[x.workout]) lastDone[x.workout] = x.date; });
+  let pick = names[0];
+  names.forEach(n => {
+    const a = lastDone[n] || '', b = lastDone[pick] || '';
+    if (a < b) pick = n;
+  });
+  return { kind: 'suggested', name: pick, last: lastDone[pick] || '' };
+}
+
+function exerciseSummary(list) {
+  const names = list.map(e => e.exercise);
+  return names.length <= 3 ? names.join(' · ') : names.slice(0, 3).join(' · ') + ' · +' + (names.length - 3) + ' more';
+}
+
+// Personal bests in the last 30 days: heaviest weight (or most reps in a set for body weight exercises).
+function computePBs(hist) {
+  const ex = buildExerciseData(hist);
+  const cut = new Date(); cut.setDate(cut.getDate() - 30);
+  const cutoff = localISO(cut);
+  const events = [];
+  Object.keys(ex).forEach(k => {
+    const days = Object.keys(ex[k].days).sort().map(d => ex[k].days[d]);
+    const bw = days.every(d => d.sets.every(st => st.weight === 0));
+    let best = null, ev = null;
+    days.forEach(d => {
+      const v = bw ? Math.max.apply(null, d.sets.map(st => st.reps)) : Math.max.apply(null, d.sets.map(st => st.weight));
+      if (best !== null && v > best) ev = { name: ex[k].name, date: d.date, value: v, prev: best, bw: bw };
+      best = best === null ? v : Math.max(best, v);
+    });
+    if (ev && ev.date >= cutoff) events.push(ev);
+  });
+  events.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : b.value - a.value);
+  return events.slice(0, 3);
+}
+
+function renderHome() {
+  const workouts = readJSON('wt_workouts', {});
+  allWorkouts = workouts;
+  const hist = savedHistory();
+  const schedule = getScheduleData();
+  const now = new Date();
+
+  const hour = now.getHours();
+  document.getElementById('homeTitle').textContent = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  document.getElementById('homeDate').textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const body = document.getElementById('homeBody');
+  body.textContent = '';
+
+  // --- resume a half-finished workout ---
+  const saved = readJSON(RUN_KEY, null);
+  if (saved && saved.ids && saved.ids.length > 0 && workouts[saved.name] && Date.now() - (saved.startedAt || 0) < 18 * 3600 * 1000) {
+    const card = el('div', 'card resume');
+    card.appendChild(el('div', 'chip', 'In progress'));
+    card.appendChild(el('b', '', saved.name));
+    card.appendChild(el('span', 'sub', saved.ids.length + ' of ' + saved.planned + ' sets logged'));
+    const acts = el('div', 'actions');
+    const go = el('button', '', 'Resume');
+    go.onclick = () => startRun(saved.name, saved);
+    const drop = el('button', 'secondary', 'Discard');
+    drop.onclick = () => {
+      if (confirm('Discard this unfinished workout? Sets you already logged stay in your Sheet.')) { clearRunState(); renderHome(); }
+    };
+    acts.appendChild(go); acts.appendChild(drop);
+    card.appendChild(acts);
+    body.appendChild(card);
+  }
+
+  // --- up next ---
+  const up = computeUpNext(workouts, schedule, hist);
+  const hero = el('div', 'card hero');
+  if (up.kind === 'none') {
+    hero.appendChild(el('div', 'chip', 'Up next'));
+    hero.appendChild(el('b', '', 'Create your first workout'));
+    hero.appendChild(el('span', 'sub', 'Build a workout and it will show up here.'));
+    const b = el('button', 'full', '+ Create New Workout');
+    b.style.marginTop = '14px';
+    b.onclick = () => showEditor();
+    hero.appendChild(b);
+  } else {
+    if (up.afterDone) hero.appendChild(el('div', 'note', '✓ Today\'s workout is done'));
+    hero.appendChild(el('div', 'chip', up.kind === 'scheduled' ? 'Scheduled · ' + up.when : 'Suggested'));
+    hero.appendChild(el('b', '', up.name));
+    let sub = exerciseSummary(workouts[up.name]);
+    if (up.kind === 'suggested') sub += '\n' + (up.last ? 'Last done ' + prettyDate(up.last) : 'Not done yet');
+    const subEl = el('span', 'sub', sub);
+    subEl.style.whiteSpace = 'pre-line';
+    hero.appendChild(subEl);
+    const b = el('button', 'full', 'Start');
+    b.style.marginTop = '14px';
+    b.onclick = () => beginWorkout(up.name);
+    hero.appendChild(b);
+  }
+  body.appendChild(hero);
+
+  // --- this week ---
+  const head = el('div', 'sechead');
+  head.appendChild(el('h2', '', 'This week'));
+  const edit = el('button', 'link', 'Schedule ›');
+  edit.onclick = showSchedule;
+  head.appendChild(edit);
+  body.appendChild(head);
+
+  const todayIdx = (now.getDay() + 6) % 7;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - todayIdx);
+  const todayISO = localISO(now);
+  const doneDates = new Set(hist.map(x => x.date));
+  if (loadQueue().some(i => !i.op) || doneTodayNames().length > 0) doneDates.add(todayISO);
+  const weekDates = [];
+  for (let i = 0; i < 7; i++) weekDates.push(localISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i)));
+  const weekCard = el('div', 'card');
+  const week = el('div', 'week');
+  weekDates.forEach((iso, i) => {
+    const done = doneDates.has(iso);
+    const planned = !!(schedule[DAYS[i]] && workouts[schedule[DAYS[i]]]);
+    let cls = 'wday';
+    if (done) cls += ' done';
+    else if (planned) cls += ' sched' + (iso < todayISO ? ' missed' : '');
+    if (iso === todayISO) cls += ' today';
+    const d = el('div', cls);
+    d.appendChild(el('span', '', DAYS[i].slice(0, 3)));
+    d.appendChild(el('div', 'dot', done ? '✓' : ''));
+    week.appendChild(d);
+  });
+  weekCard.appendChild(week);
+  const wk = hist.filter(x => x.date >= weekDates[0] && x.date <= weekDates[6]);
+  const wsets = wk.reduce((n, x) => n + x.sets, 0);
+  weekCard.appendChild(el('div', 'weeksum', wk.length === 0 ? 'No workouts yet this week.' :
+    wk.length + (wk.length === 1 ? ' workout' : ' workouts') + ' · ' + wsets + (wsets === 1 ? ' set' : ' sets')));
+  body.appendChild(weekCard);
+
+  // --- recent personal bests ---
+  if (hist.length > 0) {
+    body.appendChild(el('div', 'sechead')).appendChild(el('h2', '', 'Recent personal bests'));
+    const pbCard = el('div', 'card');
+    const pbs = computePBs(hist);
+    if (pbs.length === 0) {
+      pbCard.appendChild(el('div', 'empty', 'No new personal bests in the last 30 days. Keep going!'));
+    } else {
+      pbs.forEach(p => {
+        const row = el('div', 'pbrow');
+        const left = el('div');
+        left.appendChild(el('b', '', p.name));
+        left.appendChild(el('span', '', prettyDate(p.date)));
+        const right = el('div', 'pbval', p.bw ? p.value + ' reps' : fmtNum(p.value));
+        right.appendChild(el('small', '', '↑ from ' + fmtNum(p.prev)));
+        row.appendChild(left); row.appendChild(right);
+        row.onclick = () => {
+          try { localStorage.setItem('wt_prog_ex', p.name); } catch (e) {}
+          showTab('progress');
+        };
+        pbCard.appendChild(row);
+      });
+    }
+    body.appendChild(pbCard);
+  }
+
+  // --- quick actions ---
+  body.appendChild(el('div', 'sechead')).appendChild(el('h2', '', 'Quick actions'));
+  const quick = el('div', 'quick');
+  const create = el('button', '', '+ Create New Workout');
+  create.onclick = () => showEditor();
+  const row2 = el('div', 'row2');
+  const sch = el('button', 'secondary', 'Schedule');
+  sch.onclick = showSchedule;
+  const rest = el('button', 'secondary restToggle', 'Rest timer');
+  rest.onclick = toggleRest;
+  row2.appendChild(sch); row2.appendChild(rest);
+  quick.appendChild(create); quick.appendChild(row2);
+  body.appendChild(quick);
+  updateRestButton();
+}
+
+// ---------- schedule screen ----------
+function showSchedule() {
+  showOnly('scheduleView');
+  const workouts = readJSON('wt_workouts', {});
+  const schedule = getScheduleData();
+  const box = document.getElementById('scheduleRows');
+  box.textContent = '';
+  const todayIdx = (new Date().getDay() + 6) % 7;
+  DAYS.forEach((day, i) => {
+    const row = el('div', 'schedrow' + (i === todayIdx ? ' today' : ''));
+    row.appendChild(el('div', 'dname', day));
+    const sel = document.createElement('select');
+    const rest = el('option', '', 'Rest day');
+    rest.value = '';
+    sel.appendChild(rest);
+    const current = schedule[day] || '';
+    Object.keys(workouts).forEach(n => {
+      const o = el('option', '', n);
+      o.value = n;
+      sel.appendChild(o);
+    });
+    if (current && !workouts[current]) { // scheduled workout no longer exists
+      const o = el('option', '', current + ' (missing)');
+      o.value = current;
+      sel.appendChild(o);
+    }
+    sel.value = current;
+    sel.onchange = () => {
+      const s = getScheduleData();
+      if (sel.value) s[day] = sel.value; else delete s[day];
+      saveScheduleData(s);
+    };
+    row.appendChild(sel);
+    box.appendChild(row);
+  });
+}
+
 // ---------- rest timer (via the Apple Shortcuts app) ----------
 // Tapping Log opens a shortcut named "Rest" and passes it the rest time in seconds.
 // The shortcut starts an iPhone timer, which rings and notifies you when it ends.
@@ -816,25 +1020,27 @@ function startRestTimer(seconds) {
 }
 
 function updateRestButton() {
-  document.getElementById('restToggle').textContent = 'Rest timer: ' + (restOn() ? 'On' : 'Off');
+  document.querySelectorAll('.restToggle').forEach(b => {
+    b.textContent = 'Rest timer: ' + (restOn() ? 'On' : 'Off');
+  });
 }
 function toggleRest() {
   try { localStorage.setItem('wt_rest', restOn() ? 'off' : 'on'); } catch (e) {}
   updateRestButton();
 }
-function testRest() {
-  const was = restOn();
-  try { localStorage.setItem('wt_rest', 'on'); } catch (e) {}
-  startRestTimer(10);
-  try { localStorage.setItem('wt_rest', was ? 'on' : 'off'); } catch (e) {}
-}
 
 // ---------- run screen ----------
 // The most recent earlier day this exercise was done (any workout), from the saved history copy.
+// The saved history copy, or an empty list if it is missing or not a list.
+function savedHistory() {
+  const h = readJSON('wt_history', []);
+  return Array.isArray(h) ? h : [];
+}
+
 function lastTimeFor(exName) {
   const t = new Date();
   const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-  const hist = readJSON('wt_history', []); // newest first
+  const hist = savedHistory(); // newest first
   let date = '', sets = [];
   hist.forEach(sess => {
     if (sess.date >= today) return;          // only earlier days count as "last time"
@@ -847,7 +1053,19 @@ function lastTimeFor(exName) {
   return date ? { date: date, sets: sets } : null;
 }
 
-function startRun(name) {
+// Starting from Library or Home. If a half-finished workout is saved, ask before replacing it.
+function beginWorkout(name) {
+  const saved = readJSON(RUN_KEY, null);
+  if (saved && saved.ids && saved.ids.length > 0) {
+    if (saved.name === name) { startRun(name, saved); return; } // same workout: just pick it back up
+    if (!confirm('You have an unfinished "' + saved.name + '" workout. Start "' + name + '" instead? Sets already logged stay saved.')) return;
+  }
+  startRun(name);
+}
+
+function startRun(name, resume) {
+  allWorkouts = readJSON('wt_workouts', allWorkouts) || allWorkouts;
+  if (!allWorkouts[name]) return;
   showOnly('runView');
   document.getElementById('runTitle').textContent = name;
   const body = document.getElementById('runBody');
@@ -855,9 +1073,10 @@ function startRun(name) {
 
   let planned = 0;
   allWorkouts[name].forEach(ex => { planned += ex.sets; });
-  currentRun = { name: name, planned: planned, ids: new Set() };
+  currentRun = { name: name, planned: planned, ids: new Set(resume ? resume.ids : []), sets: resume ? (resume.sets || {}) : {}, startedAt: resume ? (resume.startedAt || Date.now()) : Date.now() };
+  if (!resume) { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
 
-  allWorkouts[name].forEach(ex => {
+  allWorkouts[name].forEach((ex, exIndex) => {
     const card = document.createElement('div');
     card.className = 'card';
 
@@ -881,13 +1100,42 @@ function startRun(name) {
 
     const rows = []; // keeps each set's inputs so we can pre-fill the next one
     for (let n = 1; n <= ex.sets; n++) {
-      card.appendChild(makeSetRow(name, ex, n, rows, last && last.sets[n - 1]));
+      card.appendChild(makeSetRow(name, ex, n, rows, last && last.sets[n - 1], exIndex + '-' + n));
+    }
+    // after resuming, carry the numbers from the last logged set into the next empty one
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i - 1].done && !rows[i].done) {
+        if (!rows[i].reps.value) rows[i].reps.value = rows[i - 1].reps.value;
+        if (!rows[i].weight.value) rows[i].weight.value = rows[i - 1].weight.value;
+      }
     }
     body.appendChild(card);
   });
 }
 
-function makeSetRow(workout, ex, n, rows, lastSet) {
+// Workouts logged today, remembered on this phone so Home is right before History has reloaded.
+function markDoneToday(name) {
+  const today = localISO(new Date());
+  const rec = readJSON('wt_today', null);
+  const names = rec && rec.date === today && Array.isArray(rec.names) ? rec.names : [];
+  if (names.indexOf(name) === -1) names.push(name);
+  writeJSON('wt_today', { date: today, names: names });
+}
+function doneTodayNames() {
+  const rec = readJSON('wt_today', null);
+  return rec && rec.date === localISO(new Date()) && Array.isArray(rec.names) ? rec.names : [];
+}
+
+// What is saved so a half-finished workout can be resumed after closing the app.
+const RUN_KEY = 'wt_run';
+function saveRunState() {
+  if (!currentRun) return;
+  writeJSON(RUN_KEY, { name: currentRun.name, planned: currentRun.planned, ids: Array.from(currentRun.ids),
+    sets: currentRun.sets, startedAt: currentRun.startedAt || Date.now() });
+}
+function clearRunState() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
+
+function makeSetRow(workout, ex, n, rows, lastSet, key) {
   const row = document.createElement('div');
   row.className = 'setrow';
 
@@ -915,16 +1163,23 @@ function makeSetRow(workout, ex, n, rows, lastSet) {
   const btn = document.createElement('button');
   btn.textContent = 'Log';
 
-  btn.onclick = () => {
-    const r = Number(reps.value);
-    if (!r || r <= 0) { reps.focus(); return; }
+  const entry = { reps: reps, weight: weight, done: false };
 
-    // Mark it done right away; the save happens in the background.
+  function markDone() {
     btn.textContent = '✓';
     btn.classList.add('done');
     btn.disabled = true;
     reps.disabled = true;
     weight.disabled = true;
+    entry.done = true;
+  }
+
+  btn.onclick = () => {
+    const r = Number(reps.value);
+    if (!r || r <= 0) { reps.focus(); return; }
+
+    // Mark it done right away; the save happens in the background.
+    markDone();
 
     const next = rows[n]; // rows[n] is the next set (rows is 0-based)
     if (next) {
@@ -933,7 +1188,12 @@ function makeSetRow(workout, ex, n, rows, lastSet) {
     }
 
     const id = newId();
-    if (currentRun) currentRun.ids.add(id); // so the finish screen can check these sets were saved
+    if (currentRun) {
+      currentRun.ids.add(id); // so the finish screen can check these sets were saved
+      if (key) currentRun.sets[key] = { reps: r, weight: Number(weight.value) || 0 };
+      saveRunState();
+      markDoneToday(currentRun.name);
+    }
     startRestTimer(ex.rest);
     enqueueSet({
       requestId: id,
@@ -946,7 +1206,13 @@ function makeSetRow(workout, ex, n, rows, lastSet) {
     });
   };
 
-  rows.push({ reps: reps, weight: weight });
+  rows.push(entry);
+  const savedSet = key && currentRun && currentRun.sets[key];
+  if (savedSet) { // resuming: this set was already logged
+    reps.value = savedSet.reps;
+    weight.value = savedSet.weight;
+    markDone();
+  }
   row.appendChild(label);
   row.appendChild(reps);
   row.appendChild(weight);
@@ -958,9 +1224,11 @@ function makeSetRow(workout, ex, n, rows, lastSet) {
 function finishWorkout() {
   if (!currentRun || currentRun.ids.size === 0) { // nothing was logged
     currentRun = null;
-    showList();
+    clearRunState();
+    showTab('home');
     return;
   }
+  clearRunState(); // finished: nothing left to resume
   document.getElementById('finishView').classList.remove('hidden');
   renderFinish();
 }
@@ -1006,7 +1274,7 @@ function renderFinish() {
 function closeFinish() {
   document.getElementById('finishView').classList.add('hidden');
   currentRun = null;
-  showList();
+  showTab('home');
 }
 
 // ---------- builder / editor screen ----------
@@ -1219,6 +1487,7 @@ function saveCurrent() {
 
   payload.requestId = newId();
   replaceInCache(oldName, name, exercises); // update this phone first...
+  if (oldName && oldName !== name) renameInSchedule(oldName, name);
   editingName = null;
   msg.textContent = '';
   enqueueOp('saveWorkout', payload);        // ...let the Sheet catch up in the background...
@@ -1232,8 +1501,6 @@ if (!CONFIG.API_URL || CONFIG.API_URL.indexOf('PASTE') === 0) {
 } else if (!getKey()) {
   showSetup();
 } else {
-  showList();
-  updateRestButton();
-  setTimeout(prefetchHistory, 1200); // after the Library has loaded
+  showTab('home');
   if (loadQueue().length > 0) { updateSyncStatus(); flushQueue(); } // finish saving anything left from last time
 }
