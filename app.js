@@ -282,40 +282,7 @@ function showOnly(id) {
     t.classList.toggle('active', TAB_VIEWS[t.dataset.tab] === id);
   });
   if (isTab) scheduleHeal(60);
-  if (id === 'historyView') showLayoutInfo();
   window.scrollTo(0, 0);
-}
-
-// TEMPORARY: measures the screen so we can find out why the tab bar floats above the bottom.
-function showLayoutInfo() {
-  const out = document.getElementById('layoutInfo');
-  if (!out) return;
-  try {
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;' +
-      'padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
-    document.body.appendChild(probe);
-    const cs = getComputedStyle(probe);
-    const safeTop = cs.paddingTop, safeBottom = cs.paddingBottom;
-    probe.style.cssText = 'position:fixed;left:0;top:0;width:1px;visibility:hidden;height:100lvh';
-    const lvh = probe.offsetHeight;
-    probe.style.height = '100dvh';
-    const dvh = probe.offsetHeight;
-    document.body.removeChild(probe);
-    const bar = document.getElementById('tabBar').getBoundingClientRect();
-    const tried = Object.keys(healLog).map(k => k + ' ' + healLog[k]).join(' · ') || 'none yet';
-    out.textContent = 'Layout readout: screen ' + screen.width + 'x' + screen.height +
-      ' · window ' + window.innerWidth + 'x' + window.innerHeight +
-      ' · bar bottom ' + Math.round(bar.bottom) +
-      ' · safe top/bottom ' + safeTop + '/' + safeBottom +
-      ' · app mode ' + (navigator.standalone ? 'yes' : 'no') +
-      ' · tallest seen ' + maxInnerH + ' · fix rounds ' + healCount +
-      ' · lvh ' + lvh + ' · dvh ' + dvh +
-      ' · page height ' + document.documentElement.scrollHeight +
-      ' · fixes tried: ' + tried;
-  } catch (e) {
-    out.textContent = 'Layout readout unavailable';
-  }
 }
 
 function showTab(tab) {
