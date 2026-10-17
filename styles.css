@@ -75,7 +75,7 @@ button.done:disabled { opacity: 1; }
 .hidden { display: none !important; }
 .msg { color: #ff5c7f; margin-top: 10px; font-size: 14px; }
 .setrow {
-  display: grid; grid-template-columns: 46px 1fr 1fr 56px; gap: 8px;
+  display: grid; grid-template-columns: 64px 1fr 1fr 56px; gap: 8px;
   align-items: center; margin-top: 10px;
 }
 .setrow button { padding: 11px 0; }
@@ -183,3 +183,6 @@ select { -webkit-appearance: none; appearance: none; font-weight: 600; }
 .legend i.teal { background: var(--teal); }
 .readout { min-height: 38px; margin: 0 0 6px; font-size: 13px; line-height: 1.35; color: #d1d1d6; background: #2c2c2e; border-radius: 10px; padding: 6px 10px; }
 .readout b { display: inline; font-size: 13px; margin: 0; color: #fff; }
+
+.setlabel small { display: block; font-size: 11px; font-weight: 500; color: #a1a1a6; margin-top: 1px; white-space: nowrap; }
+.lasttitle { color: var(--muted); font-size: 12px; margin-top: 10px; }

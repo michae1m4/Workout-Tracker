@@ -637,21 +637,21 @@ function renderProgress() {
   const shortSets = d => setsText(d.sets);
   if (!bodyweightOnly) {
     body.appendChild(chartCard('Weight over time',
-      'Line = average of all sets · bar = lightest to heaviest · dots = each set',
+      '',
       [{ val: 'wAvg', lo: 'wMin', hi: 'wMax', dots: 'weight', height: 200, ticks: 4 }], days,
       d => ['avg ' + fmtNum(d.wAvg), shortSets(d)]));
   }
   body.appendChild(chartCard('Reps over time',
-    'Line = average of all sets · bar = fewest to most reps · dots = each set',
+    '',
     [{ val: 'rAvg', lo: 'rMin', hi: 'rMax', dots: 'reps', height: 200, ticks: 4 }], days,
     d => ['avg ' + fmtNum(d.rAvg) + ' reps', shortSets(d)]));
   if (!bodyweightOnly) {
-    body.appendChild(chartCard('Average set per workout', 'Both measures share the same dates',
+    body.appendChild(chartCard('Average set per workout', '',
       [{ val: 'wAvg', height: 120, ticks: 3, noX: true, name: 'Avg weight', color: 'pink' },
        { val: 'rAvg', height: 140, ticks: 3, name: 'Avg reps', color: 'teal' }], days,
       d => ['avg set: ' + fmtNum(d.rAvg) + ' reps × ' + fmtNum(d.wAvg), ''], true));
     body.appendChild(chartCard('Estimated one-rep max',
-      'Calculated from your normal sets (best set each day). Nothing extra to log.',
+      '',
       [{ val: 'orm', height: 200, ticks: 4, color: 'teal' }], days,
       d => ['est. 1RM ' + fmtNum(d.orm), 'from your best set: ' + d.best.reps + ' × ' + fmtNum(d.best.weight)]));
   }
@@ -757,10 +757,7 @@ function chartCard(title, sub, specs, days, readoutFn, legend) {
   card.className = 'card chartcard';
   const h = document.createElement('b');
   h.textContent = title;
-  const s = document.createElement('div');
-  s.className = 'sub2';
-  s.textContent = sub;
-  card.appendChild(h); card.appendChild(s);
+  card.appendChild(h);
   if (legend) {
     const lg = document.createElement('div');
     lg.className = 'legend';
@@ -802,6 +799,23 @@ function chartCard(title, sub, specs, days, readoutFn, legend) {
 }
 
 // ---------- run screen ----------
+// The most recent earlier day this exercise was done (any workout), from the saved history copy.
+function lastTimeFor(exName) {
+  const t = new Date();
+  const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  const hist = readJSON('wt_history', []); // newest first
+  let date = '', sets = [];
+  hist.forEach(sess => {
+    if (sess.date >= today) return;          // only earlier days count as "last time"
+    sess.exercises.forEach(e => {
+      if (e.exercise !== exName) return;
+      if (sess.date > date) { date = sess.date; sets = e.sets.slice(); }
+      else if (sess.date === date) sets = sets.concat(e.sets); // same exercise twice that day
+    });
+  });
+  return date ? { date: date, sets: sets } : null;
+}
+
 function startRun(name) {
   showOnly('runView');
   document.getElementById('runTitle').textContent = name;
@@ -826,21 +840,34 @@ function startRun(name) {
     card.appendChild(title);
     card.appendChild(detail);
 
+    const last = lastTimeFor(ex.exercise);
+    if (last) {
+      const lt = document.createElement('div');
+      lt.className = 'lasttitle';
+      lt.textContent = 'Last time · ' + prettyDate(last.date);
+      card.appendChild(lt);
+    }
+
     const rows = []; // keeps each set's inputs so we can pre-fill the next one
     for (let n = 1; n <= ex.sets; n++) {
-      card.appendChild(makeSetRow(name, ex, n, rows));
+      card.appendChild(makeSetRow(name, ex, n, rows, last && last.sets[n - 1]));
     }
     body.appendChild(card);
   });
 }
 
-function makeSetRow(workout, ex, n, rows) {
+function makeSetRow(workout, ex, n, rows, lastSet) {
   const row = document.createElement('div');
   row.className = 'setrow';
 
   const label = document.createElement('div');
   label.className = 'setlabel';
   label.textContent = 'Set ' + n;
+  if (lastSet) { // what you did in this set last time
+    const hint = document.createElement('small');
+    hint.textContent = lastSet.weight > 0 ? lastSet.reps + ' × ' + fmtNum(lastSet.weight) : lastSet.reps + ' reps';
+    label.appendChild(hint);
+  }
 
   const reps = document.createElement('input');
   reps.type = 'number';
