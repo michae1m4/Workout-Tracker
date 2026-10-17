@@ -386,67 +386,75 @@ button.tab.active { color: #ff5c7f; background: rgba(255,255,255,.09); box-shado
 }
 
 /* ============================================================
-   MOTION
-   Short, soft and springy. Everything here is skipped for people who turn on Reduce Motion in iOS.
+   MOTION  (v26: slow and eased)
+   Screens and tabs: 0.85s, long soft ease. Editor slide and History expand: 0.72s, same curve.
+   Switch and button presses: a gentler, shorter ease. Skipped when iOS Reduce Motion is on.
    Remove this section to turn all animation off.
    ============================================================ */
-:root { --ease: cubic-bezier(.22,.8,.24,1); --spring: cubic-bezier(.34,1.56,.64,1); }
-
-/* screens: tabs fade and rise, deeper screens slide in from the right; lists stagger in */
-@keyframes rise  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes slidein { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
-.enter { animation: rise .32s var(--ease) backwards; }
-.enter-push { animation: slidein .34s var(--ease) backwards; }
-.enter #list > *, .enter #homeBody > *, .enter #historyList > *, .enter #progBody > *, .enter-push #exerciseRows > * {
-  animation: rise .44s var(--ease) backwards;
+:root {
+  --ease-luxe: cubic-bezier(.33, 0, .15, 1);
+  --ease-soft: cubic-bezier(.4, 0, .2, 1);
+  --ease-press: cubic-bezier(.25, .8, .25, 1);
+  --t-tab: .85s; --t-push: .72s; --t-expand: .72s; --t-switch: .4s; --t-press: .3s;
 }
-.enter #list > *:nth-child(2), .enter #homeBody > *:nth-child(2), .enter-push #exerciseRows > *:nth-child(2), .enter #progBody > *:nth-child(2) { animation-delay: .04s; }
-.enter #list > *:nth-child(3), .enter #homeBody > *:nth-child(3), .enter-push #exerciseRows > *:nth-child(3), .enter #progBody > *:nth-child(3) { animation-delay: .08s; }
-.enter #list > *:nth-child(4), .enter #homeBody > *:nth-child(4), .enter-push #exerciseRows > *:nth-child(4), .enter #progBody > *:nth-child(4) { animation-delay: .12s; }
-.enter #list > *:nth-child(5), .enter #homeBody > *:nth-child(5), .enter-push #exerciseRows > *:nth-child(5), .enter #progBody > *:nth-child(5) { animation-delay: .16s; }
-.enter #list > *:nth-child(n+6), .enter #homeBody > *:nth-child(n+6), .enter-push #exerciseRows > *:nth-child(n+6), .enter #progBody > *:nth-child(n+6) { animation-delay: .2s; }
 
-/* presses: buttons and tappable cards dip slightly, then spring back */
-button { transition: transform .22s var(--spring), opacity .2s ease, background-color .2s ease, box-shadow .2s ease; }
-button:active { transform: scale(.96); }
+/* tabs: the whole screen fades and rises once. Content inside is not animated separately,
+   so a refresh that redraws it can never restart an animation. */
+@keyframes rise  { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes slidein { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+.enter { animation: rise var(--t-tab) var(--ease-luxe) backwards; }
+.enter-push { animation: slidein var(--t-push) var(--ease-luxe) backwards; }
+/* editor exercise cards (drawn once, never redrawn) follow in sequence */
+.enter-push #exerciseRows > * { animation: rise var(--t-push) var(--ease-luxe) backwards; }
+.enter-push #exerciseRows > *:nth-child(2) { animation-delay: .07s; }
+.enter-push #exerciseRows > *:nth-child(3) { animation-delay: .14s; }
+.enter-push #exerciseRows > *:nth-child(4) { animation-delay: .21s; }
+.enter-push #exerciseRows > *:nth-child(5) { animation-delay: .28s; }
+.enter-push #exerciseRows > *:nth-child(n+6) { animation-delay: .35s; }
+
+/* presses: buttons and tappable cards dip slightly, then ease back */
+button { transition: transform var(--t-press) var(--ease-press), opacity .3s ease, background-color .3s ease, box-shadow .3s ease; }
+button:active { transform: scale(.97); }
 button.tab:active { transform: none; }
-.wcard { transition: transform .22s var(--spring); }
-.wcard:active { transform: scale(.985); }
-button.tab { transition: color .2s ease, background-color .25s ease, box-shadow .25s ease; }
+.wcard { transition: transform var(--t-press) var(--ease-press); }
+.wcard:active { transform: scale(.988); }
+button.tab { transition: color .3s ease, background-color .35s ease, box-shadow .35s ease; }
 
-/* switch: knob springs across and stretches while pressed */
-.switch { transition: background .25s ease; }
-.switch::after { transition: transform .32s var(--spring), width .18s ease; }
-.switch:active::after { width: 33px; }
-.switch.on:active::after { transform: translateX(14px); }
+/* switch: knob glides across, track colour fades */
+button.switch { transition: background var(--t-switch) var(--ease-soft), box-shadow var(--t-switch) var(--ease-soft); }
+button.switch::after { transition: transform var(--t-switch) var(--ease-soft), width .25s ease; }
 
-/* History: rows expand and collapse smoothly, chevron turns */
-.hwrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .34s var(--ease); }
-.hwrap > .hdetail { overflow: hidden; min-height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; transition: opacity .25s ease, padding .34s var(--ease); }
+/* History: rows open and close slowly, chevron turns with them */
+.hwrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--t-expand) var(--ease-luxe); }
+.hwrap > .hdetail { overflow: hidden; min-height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; transition: opacity var(--t-expand) var(--ease-luxe), padding var(--t-expand) var(--ease-luxe); }
 .hrow.open .hwrap { grid-template-rows: 1fr; }
 .hrow.open .hwrap > .hdetail { opacity: 1; padding-bottom: 16px; }
-.chev { transition: transform .3s var(--ease); }
+.chev { transition: transform var(--t-expand) var(--ease-luxe); }
 .hrow.open .chev { transform: rotate(90deg); }
 
-/* editor: new exercise cards pop in, removed ones fold away */
-@keyframes popin { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
-.card.rowin { animation: popin .36s var(--ease) backwards; }
-.card.leaving { transition: height .26s var(--ease), opacity .2s ease, margin .26s var(--ease), padding .26s var(--ease); height: 0 !important; opacity: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; border-width: 0; }
+/* editor: new exercise cards fade in, removed ones fold away */
+@keyframes popin { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.card.rowin { animation: popin var(--t-push) var(--ease-luxe) backwards; }
+.card.leaving { transition: height .45s var(--ease-luxe), opacity .35s ease, margin .45s var(--ease-luxe), padding .45s var(--ease-luxe); height: 0 !important; opacity: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; border-width: 0; }
 
-/* Log: logged set pops with a soft lime ring */
-@keyframes logpop { 0% { transform: scale(.88); } 55% { transform: scale(1.1); } 100% { transform: scale(1); } }
-@keyframes ring { from { box-shadow: 0 0 0 0 rgba(190,255,70,.55); } to { box-shadow: 0 0 0 12px rgba(190,255,70,0); } }
-.setrow button.pop { animation: logpop .36s var(--spring), ring .6s ease-out; }
+/* Log: a logged set eases in with a soft lime ring */
+@keyframes logpop { 0% { transform: scale(.94); } 100% { transform: scale(1); } }
+@keyframes ring { from { box-shadow: 0 0 0 0 rgba(190,255,70,.45); } to { box-shadow: 0 0 0 10px rgba(190,255,70,0); } }
+.setrow button.pop { animation: logpop .5s var(--ease-press), ring .9s ease-out; }
 
-/* overlays and the saved/sync pill fade and scale in */
-@keyframes fadeup { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
-.overlay:not(.hidden) { animation: fadeup .3s var(--ease); }
+/* overlays and the saved/sync pill fade in */
+@keyframes fadeup { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
+.overlay:not(.hidden) { animation: fadeup .5s var(--ease-luxe); }
 @keyframes toastin { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
-.sync:not(.hidden) { animation: toastin .28s var(--ease); }
+.sync:not(.hidden) { animation: toastin .4s var(--ease-luxe); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
 }
+
+/* no scroll bar on the side */
+html, body { scrollbar-width: none; -ms-overflow-style: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 /* ---------- v25: Library delete button, switch restyle ---------- */
 button.trash { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; background: none; box-shadow: none; color: rgba(255,255,255,.45);

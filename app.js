@@ -192,7 +192,7 @@ function animateIn(id) {
   void v.offsetWidth; // restart the animation
   v.classList.add(PUSH_VIEWS.indexOf(id) !== -1 ? 'enter-push' : 'enter');
   clearTimeout(v._enterTimer);
-  v._enterTimer = setTimeout(() => v.classList.remove('enter', 'enter-push'), 800);
+  v._enterTimer = setTimeout(() => v.classList.remove('enter', 'enter-push'), 1400);
 }
 
 function showOnly(id) {
