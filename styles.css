@@ -264,133 +264,120 @@ button.play svg { width: 18px; height: 18px; fill: currentColor; margin-left: 2p
 .card .row:first-of-type { margin-top: 10px; }
 
 /* ============================================================
-   LIQUID GLASS LAYER
-   Glass only reads as glass when there is something behind it, so the page has a soft colour glow
-   fixed behind everything. Surfaces are translucent, blurred, with a bright top edge and a soft
-   highlight in the corner. Remove this whole section to go back to the flat look.
+   LIQUID GLASS LAYER  (v2: restrained)
+   Nearly clear surfaces that blur what is behind them, defined by a thin light rim that is brightest
+   at the top-left and bottom-right, with almost no fill, shadow or gloss. Remove this section to go flat.
    ============================================================ */
 :root {
-  --glass-fill: linear-gradient(150deg, rgba(255,255,255,.13), rgba(255,255,255,.045) 60%, rgba(255,255,255,.07));
-  --glass-edge: rgba(255,255,255,.16);
-  --glass-blur: blur(22px) saturate(185%);
-  --glass-shadow: 0 10px 30px rgba(0,0,0,.38);
-  --glass-hi: inset 0 1px 0 rgba(255,255,255,.38), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 -14px 22px rgba(255,255,255,.025);
+  --glass-fill: linear-gradient(150deg, rgba(255,255,255,.10), rgba(255,255,255,.035));
+  --glass-blur: blur(20px) saturate(150%);
+  --glass-shadow: 0 8px 24px rgba(0,0,0,.22);
+  --rim: linear-gradient(140deg, rgba(255,255,255,.70), rgba(255,255,255,.12) 32%, rgba(255,255,255,.07) 68%, rgba(255,255,255,.42));
+}
+/* the thin glass rim, drawn as a 1px gradient border */
+.card::before, .group::before, .tile::before, button.rimmed::before, .tabbar::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: var(--rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
 }
 body { background: transparent; }
 body::before {
   content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(62% 36% at 96% 4%,  rgba(250,17,79,.50), transparent 72%),
-    radial-gradient(58% 34% at 2% 34%,  rgba(255,122,61,.34), transparent 72%),
-    radial-gradient(72% 40% at 92% 70%, rgba(30,227,207,.22), transparent 72%),
-    radial-gradient(64% 36% at 4% 100%, rgba(250,17,79,.30), transparent 72%);
+    radial-gradient(70% 38% at 100% 0%,  rgba(250,17,79,.26), transparent 80%),
+    radial-gradient(64% 34% at 0% 38%,   rgba(255,122,61,.15), transparent 80%),
+    radial-gradient(78% 40% at 100% 74%, rgba(30,227,207,.11), transparent 80%),
+    radial-gradient(68% 34% at 0% 100%,  rgba(250,17,79,.14), transparent 80%);
 }
 
-/* ---------- glass surfaces ---------- */
+/* ---------- surfaces ---------- */
 .card, .group, .tile {
   position: relative; isolation: isolate;
   background: var(--glass-fill);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--glass-hi), var(--glass-shadow);
+  border: 0;
+  box-shadow: var(--glass-shadow);
 }
-/* soft highlight sweeping in from the top-left corner */
-.card::before, .group::before, .tile::before {
-  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
-  background: radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.16), rgba(255,255,255,0) 55%);
-}
-.hero {
-  background: linear-gradient(150deg, rgba(250,17,79,.42), rgba(255,122,61,.26) 65%, rgba(255,255,255,.06));
-  border-color: rgba(255,170,140,.40);
-}
-.resume { background: linear-gradient(150deg, rgba(182,255,59,.20), rgba(182,255,59,.06)); border-color: rgba(182,255,59,.45); }
+.hero { background: linear-gradient(150deg, rgba(250,17,79,.26), rgba(255,122,61,.14) 65%, rgba(255,255,255,.03)); }
+.resume { background: linear-gradient(150deg, rgba(182,255,59,.13), rgba(182,255,59,.04)); }
 .card.dragging { background: rgba(60,60,66,.85); }
-.group .hrow, .group .lrow { border-top-color: rgba(255,255,255,.10); }
-.pbrow, .schedrow { border-top-color: rgba(255,255,255,.10); }
+.group .hrow, .group .lrow, .pbrow, .schedrow { border-top-color: rgba(255,255,255,.07); }
 
-/* ---------- glass buttons ---------- */
-button { position: relative; isolation: isolate; overflow: hidden; }
-button::before {   /* glossy sheen across the top half */
-  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 50%; z-index: -1; pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,0));
-  border-radius: inherit;
-}
-/* main action: tinted glass in the accent gradient */
+/* ---------- buttons ---------- */
+button { position: relative; isolation: isolate; border-radius: 999px; }
+button::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: linear-gradient(140deg, rgba(255,255,255,.55), rgba(255,255,255,.10) 35%, rgba(255,255,255,.06) 65%, rgba(255,255,255,.32));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; }
+/* main action: tinted glass, still see-through, thin rim, soft glow */
 button {
-  background: linear-gradient(135deg, rgba(250,17,79,.94), rgba(255,122,61,.94));
-  border: 1px solid rgba(255,255,255,.34);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -10px 18px rgba(120,0,30,.18), 0 8px 24px rgba(250,17,79,.38);
+  background: linear-gradient(135deg, rgba(250,17,79,.80), rgba(255,122,61,.76));
+  border: 0; box-shadow: 0 6px 20px rgba(250,17,79,.22);
 }
-/* everything else: clear glass */
+/* secondary: clear glass */
 button.secondary {
-  background: linear-gradient(150deg, rgba(255,255,255,.17), rgba(255,255,255,.06));
-  -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--glass-hi), 0 6px 18px rgba(0,0,0,.30);
+  background: linear-gradient(150deg, rgba(255,255,255,.10), rgba(255,255,255,.03));
+  -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
 }
-button.danger, button.link, button.back, button.tab, button.switch { background: none; border: 0; box-shadow: none; overflow: visible; }
+button.danger, button.link, button.back, button.tab, button.switch { background: none; box-shadow: none; }
 button.danger::before, button.link::before, button.back::before, button.tab::before, button.switch::before { display: none; }
-.exactions button { background: none; border: 0; box-shadow: none; }
+.exactions button { background: none; box-shadow: none; }
 .exactions button::before { display: none; }
-/* Log: clear white glass until logged (then lime); no edge or sheen so it stays light */
+/* Log: clear, rimless glass until logged; logged: soft lime glass */
 .setrow button {
-  background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.04));
-  -webkit-backdrop-filter: blur(14px) saturate(170%); backdrop-filter: blur(14px) saturate(170%);
-  border: 0; color: #fff; box-shadow: none;
-  font-size: 12px; font-weight: 700; letter-spacing: .2px;
+  background: linear-gradient(150deg, rgba(255,255,255,.14), rgba(255,255,255,.04));
+  -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%);
+  color: #fff; box-shadow: none; font-size: 12px; font-weight: 700; letter-spacing: .2px;
 }
 .setrow button::before { display: none; }
 .setrow button.done, button.done {
-  background: linear-gradient(150deg, rgba(190,255,70,.96), rgba(130,230,40,.92)); color: #0b1500;
-  border: 1px solid rgba(255,255,255,.45);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 4px 14px rgba(150,255,50,.28);
+  background: linear-gradient(150deg, rgba(190,255,70,.88), rgba(130,230,40,.82)); color: #0b1500;
+  box-shadow: 0 3px 12px rgba(150,255,50,.18);
 }
+.setrow button.done::before, button.done::before { display: block; }
 button.play {
-  background: linear-gradient(150deg, rgba(250,17,79,.36), rgba(255,122,61,.16));
-  border: 1px solid rgba(255,140,150,.45); color: #fff;
-  -webkit-backdrop-filter: blur(14px) saturate(180%); backdrop-filter: blur(14px) saturate(180%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 6px 18px rgba(250,17,79,.30);
+  background: linear-gradient(150deg, rgba(250,17,79,.30), rgba(255,122,61,.14)); color: #fff;
+  -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: 0 4px 14px rgba(250,17,79,.14);
 }
 
-/* ---------- glass fields ---------- */
+/* ---------- fields ---------- */
 input, select {
-  background-color: rgba(255,255,255,.075);
-  box-shadow: inset 0 1px 3px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.09);
+  background-color: rgba(255,255,255,.055);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
 }
 select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1.5 1.5L7 7l5.5-5.5' fill='none' stroke='%23c7c7cc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-.pill { background: rgba(255,255,255,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
-.chip { background: rgba(255,255,255,.18); box-shadow: inset 0 1px 0 rgba(255,255,255,.35); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.pill { background: rgba(255,255,255,.10); }
+.chip { background: rgba(255,255,255,.12); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 
-/* ---------- tab bar: glass strip anchored to the bottom edge ---------- */
+/* ---------- tab bar: clear glass strip anchored to the bottom edge ---------- */
 .tabbar {
-  background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.05));
-  -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
-  border-top: 1px solid rgba(255,255,255,.18);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 -8px 30px rgba(0,0,0,.35);
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
+  -webkit-backdrop-filter: blur(28px) saturate(160%); backdrop-filter: blur(28px) saturate(160%);
+  border-top: 0; box-shadow: none; border-radius: 0;
 }
-button.tab { color: rgba(255,255,255,.55); }
-button.tab.active {
-  color: #ff5c7f;
-  background: linear-gradient(150deg, rgba(255,255,255,.17), rgba(255,255,255,.06));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 0 0 1px rgba(255,255,255,.08);
-}
+.tabbar::before { border-radius: 0; padding: 1px 0 0; background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.26), rgba(255,255,255,.04)); }
+button.tab { color: rgba(255,255,255,.55); border-radius: 18px; }
+button.tab.active { color: #ff5c7f; background: rgba(255,255,255,.09); box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); }
 
-/* ---------- switch, dots, pills, overlays ---------- */
-.switch { background: rgba(255,255,255,.16); box-shadow: inset 0 1px 3px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.10); }
-.switch::after { background: linear-gradient(180deg, #fff, #e4e4ea); box-shadow: 0 2px 6px rgba(0,0,0,.45), inset 0 1px 0 #fff; }
-.switch.on { background: linear-gradient(150deg, rgba(190,255,70,.95), rgba(120,225,40,.9)); }
-.wday .dot { background: linear-gradient(150deg, rgba(255,255,255,.16), rgba(255,255,255,.05)); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
-.wday.done .dot { background: linear-gradient(135deg, rgba(250,17,79,.95), rgba(255,122,61,.95)); box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 4px 12px rgba(250,17,79,.4); }
+/* ---------- switch, dots, overlays ---------- */
+.switch { background: rgba(255,255,255,.14); box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); }
+.switch::after { background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.switch.on { background: linear-gradient(150deg, rgba(190,255,70,.9), rgba(120,225,40,.85)); }
+.wday .dot { background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); }
+.wday.done .dot { background: linear-gradient(135deg, rgba(250,17,79,.85), rgba(255,122,61,.85)); box-shadow: 0 3px 10px rgba(250,17,79,.22); }
 .wday.sched .dot { background: none; box-shadow: none; }
 .wday.today .dot { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--pink); }
-.wday.done.today .dot { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--pink), inset 0 1px 0 rgba(255,255,255,.55); }
-.overlay { background: rgba(0,0,0,.5); -webkit-backdrop-filter: blur(34px) saturate(180%); backdrop-filter: blur(34px) saturate(180%); }
-.sync { -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%); border: 1px solid rgba(255,255,255,.16); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 6px 20px rgba(0,0,0,.5); }
-.sync.pending { background: rgba(255,122,61,.22); }
-.sync.ok { background: rgba(182,255,59,.20); }
-.sync.err { background: rgba(250,17,79,.26); }
+.wday.done.today .dot { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--pink); }
+.overlay { background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(30px) saturate(150%); backdrop-filter: blur(30px) saturate(150%); }
+.sync { -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.sync.pending { background: rgba(255,122,61,.18); }
+.sync.ok { background: rgba(182,255,59,.15); }
+.sync.err { background: rgba(250,17,79,.22); }
 .chart .dot { stroke: rgba(20,20,24,.9); }
-.chart .grid { stroke: rgba(255,255,255,.10); }
+.chart .grid { stroke: rgba(255,255,255,.08); }
 
 /* people who turn off transparency in iOS accessibility settings get solid surfaces */
 @media (prefers-reduced-transparency: reduce) {
