@@ -412,6 +412,32 @@ function prettyDate(iso) {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+// Opens or closes a History row by animating its height in pixels (smoother than animating a grid track).
+const EXPAND_MS = 720, EXPAND_EASE = 'cubic-bezier(.33, 0, .15, 1)';
+function toggleHistoryRow(row, wrap, head) {
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const opening = !row.classList.contains('open') || wrap._closing;
+  // a tap mid-animation reverses from wherever the row currently is
+  let from = wrap.offsetHeight;
+  if (wrap._anim) { wrap._anim.cancel(); wrap._anim = null; }
+  wrap._closing = false;
+  head.setAttribute('aria-expanded', opening ? 'true' : 'false');
+  if (opening) {
+    row.classList.add('open');
+    if (reduce) return;
+    const to = wrap.scrollHeight;
+    wrap._anim = wrap.animate([{ height: from + 'px', opacity: from ? 1 : 0 }, { height: to + 'px', opacity: 1 }],
+      { duration: EXPAND_MS, easing: EXPAND_EASE });
+    wrap._anim.onfinish = () => { wrap._anim = null; };
+  } else {
+    if (reduce) { row.classList.remove('open'); return; }
+    wrap._closing = true;
+    wrap._anim = wrap.animate([{ height: from + 'px', opacity: 1 }, { height: '0px', opacity: 0 }],
+      { duration: EXPAND_MS, easing: EXPAND_EASE });
+    wrap._anim.onfinish = () => { wrap._anim = null; wrap._closing = false; row.classList.remove('open'); };
+  }
+}
+
 function renderHistory(sessions) {
   const box = document.getElementById('historyList');
   box.textContent = '';
@@ -450,10 +476,7 @@ function renderHistory(sessions) {
     });
     detail.appendChild(el('div', 'hset hvol', 'Total volume ' + Math.round(sess.volume).toLocaleString()));
 
-    head.onclick = () => {
-      const open = row.classList.toggle('open');
-      head.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
+    head.onclick = () => toggleHistoryRow(row, wrap, head);
     row.appendChild(head);
     row.appendChild(wrap);
     group.appendChild(row);

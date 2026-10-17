@@ -424,11 +424,9 @@ button.tab { transition: color .3s ease, background-color .35s ease, box-shadow 
 button.switch { transition: background var(--t-switch) var(--ease-soft), box-shadow var(--t-switch) var(--ease-soft); }
 button.switch::after { transition: transform var(--t-switch) var(--ease-soft), width .25s ease; }
 
-/* History: rows open and close slowly, chevron turns with them */
-.hwrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--t-expand) var(--ease-luxe); }
-.hwrap > .hdetail { overflow: hidden; min-height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; transition: opacity var(--t-expand) var(--ease-luxe), padding var(--t-expand) var(--ease-luxe); }
-.hrow.open .hwrap { grid-template-rows: 1fr; }
-.hrow.open .hwrap > .hdetail { opacity: 1; padding-bottom: 16px; }
+/* History: height is animated from script (see toggleHistoryRow); the chevron turns with it */
+.hwrap { height: 0; overflow: hidden; }
+.hrow.open .hwrap { height: auto; }
 .chev { transition: transform var(--t-expand) var(--ease-luxe); }
 .hrow.open .chev { transform: rotate(90deg); }
 
@@ -472,3 +470,7 @@ button.switch.on { background: linear-gradient(135deg, rgba(250,17,79,.88), rgba
 button.switch.on::after { transform: translateX(20px); }
 button.switch:active::after { width: 32px; }
 button.switch.on:active::after { transform: translateX(14px); }
+
+/* v27: cards, groups and tiles sit over a smooth gradient, so blurring it is invisible but expensive while animating.
+   The tab bar and overlays keep their blur because content scrolls beneath them. */
+.card, .group, .tile { -webkit-backdrop-filter: none; backdrop-filter: none; }
