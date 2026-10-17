@@ -1,4 +1,4 @@
-const RESISTANCE = ['dumbbell', 'body weight', 'cable', 'machine', 'other'];
+const RESISTANCE = ['dumbbell', 'barbell', 'body weight', 'cable', 'machine', 'other'];
 let allWorkouts = {};
 let currentRun = null; // { name, planned, ids: Set of requestIds logged in this run }
 let editingName = null; // name of the workout open in the editor, or null for a new one
