@@ -219,7 +219,6 @@ function showTab(tab) {
   if (tab === 'progress') loadProgress();
 }
 
-function showList() { showTab('list'); }
 let editorOrigin = 'list';   // where the editor was opened from, so Back/Save/Cancel return there
 function leaveEditor() { showTab(editorOrigin === 'home' ? 'home' : 'list'); }
 
