@@ -412,30 +412,52 @@ function prettyDate(iso) {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-// Opens or closes a History row by animating its height in pixels (smoother than animating a grid track).
+// Opens or closes a History row. Only transforms, opacity and a clip are animated (no per-frame layout),
+// which keeps it smooth on phones even with a long list. The layout itself changes once, and the rows below
+// slide into place from where they were.
 const EXPAND_MS = 720, EXPAND_EASE = 'cubic-bezier(.33, 0, .15, 1)';
 function toggleHistoryRow(row, wrap, head) {
-  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const opening = !row.classList.contains('open') || wrap._closing;
-  // a tap mid-animation reverses from wherever the row currently is
-  let from = wrap.offsetHeight;
-  if (wrap._anim) { wrap._anim.cancel(); wrap._anim = null; }
-  wrap._closing = false;
+  const group = row.parentElement;
+  if (group._cleanup) group._cleanup();   // a tap mid-animation settles the previous one first
+  const opening = !row.classList.contains('open');
   head.setAttribute('aria-expanded', opening ? 'true' : 'false');
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce || !row.animate) { row.classList.toggle('open', opening); return; }
+
+  const rows = Array.prototype.slice.call(group.children);
+  const followers = rows.slice(rows.indexOf(row) + 1);
+  const detail = wrap.firstElementChild;
+  const radius = getComputedStyle(group).borderTopLeftRadius;
+  const opts = { duration: EXPAND_MS, easing: EXPAND_EASE };
+  const h0 = group.offsetHeight;
+  if (opening) row.classList.add('open');
+  const h1 = (function () { // size of the other state
+    if (opening) return group.offsetHeight;
+    row.classList.remove('open'); const h = group.offsetHeight; row.classList.add('open'); return h;
+  })();
+  const d = Math.abs(h1 - h0);
+  const anims = [];
+  const clip = n => 'inset(0 0 ' + n + 'px 0 round ' + radius + ')';
+  document.body.classList.add('busy');
+
   if (opening) {
-    row.classList.add('open');
-    if (reduce) return;
-    const to = wrap.scrollHeight;
-    wrap._anim = wrap.animate([{ height: from + 'px', opacity: from ? 1 : 0 }, { height: to + 'px', opacity: 1 }],
-      { duration: EXPAND_MS, easing: EXPAND_EASE });
-    wrap._anim.onfinish = () => { wrap._anim = null; };
+    followers.forEach(f => anims.push(f.animate([{ transform: 'translateY(' + -d + 'px)' }, { transform: 'translateY(0)' }], opts)));
+    anims.push(detail.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: .42 }, { opacity: 1, offset: 1 }], opts));
+    anims.push(group.animate([{ clipPath: clip(d) }, { clipPath: clip(0) }], opts));
   } else {
-    if (reduce) { row.classList.remove('open'); return; }
-    wrap._closing = true;
-    wrap._anim = wrap.animate([{ height: from + 'px', opacity: 1 }, { height: '0px', opacity: 0 }],
-      { duration: EXPAND_MS, easing: EXPAND_EASE });
-    wrap._anim.onfinish = () => { wrap._anim = null; wrap._closing = false; row.classList.remove('open'); };
+    followers.forEach(f => anims.push(f.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(' + -d + 'px)' }], opts)));
+    anims.push(detail.animate([{ opacity: 1, offset: 0 }, { opacity: 0, offset: .3 }, { opacity: 0, offset: 1 }], opts));
+    anims.push(group.animate([{ clipPath: clip(0) }, { clipPath: clip(d) }], opts));
   }
+  let done = false;
+  group._cleanup = () => {
+    if (done) return;
+    done = true; group._cleanup = null;
+    anims.forEach(a => a.cancel());
+    if (!opening) row.classList.remove('open');
+    document.body.classList.remove('busy');
+  };
+  anims[0].onfinish = group._cleanup;
 }
 
 function renderHistory(sessions) {

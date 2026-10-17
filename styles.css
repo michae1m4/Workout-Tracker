@@ -425,8 +425,8 @@ button.switch { transition: background var(--t-switch) var(--ease-soft), box-sha
 button.switch::after { transition: transform var(--t-switch) var(--ease-soft), width .25s ease; }
 
 /* History: height is animated from script (see toggleHistoryRow); the chevron turns with it */
-.hwrap { height: 0; overflow: hidden; }
-.hrow.open .hwrap { height: auto; }
+.hwrap { display: none; }
+.hrow.open .hwrap { display: block; }
 .chev { transition: transform var(--t-expand) var(--ease-luxe); }
 .hrow.open .chev { transform: rotate(90deg); }
 
@@ -474,3 +474,7 @@ button.switch.on:active::after { transform: translateX(14px); }
 /* v27: cards, groups and tiles sit over a smooth gradient, so blurring it is invisible but expensive while animating.
    The tab bar and overlays keep their blur because content scrolls beneath them. */
 .card, .group, .tile { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* while a row expands, the tab bar's live blur is swapped for a plain tint so the phone doesn't have to
+   re-blur the moving list every frame */
+body.busy .tabbar { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(14,14,18,.80); }
