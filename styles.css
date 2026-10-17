@@ -169,5 +169,17 @@ select { -webkit-appearance: none; appearance: none; font-weight: 600; }
 .chart .valabel { fill: var(--text); font-size: 12px; font-weight: 700; font-family: -apple-system, sans-serif; }
 .chart .cross { stroke: rgba(255,255,255,0.3); stroke-width: 1; }
 .chart .ring { fill: none; stroke: var(--text); stroke-width: 1.5; }
-.tip { position: absolute; top: -4px; transform: translateX(-50%); background: #2c2c2e; color: #fff; font-size: 13px; font-weight: 600;
+.tipold { position: absolute; top: -4px; transform: translateX(-50%); background: #2c2c2e; color: #fff; font-size: 13px; font-weight: 600;
   padding: 5px 10px; border-radius: 10px; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+
+.chart .band { stroke: rgba(250,17,79,.30); stroke-width: 4; stroke-linecap: round; }
+.chart .band.teal { stroke: rgba(30,227,207,.30); }
+.chart .setdot { fill: rgba(255,255,255,.55); }
+.chart .line.teal { stroke: var(--teal); }
+.chart .dot.teal { fill: var(--teal); }
+.sub2 { color: var(--muted); font-size: 12px; margin: -4px 0 8px; line-height: 1.35; }
+.legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 5px; margin-right: 5px; vertical-align: -1px; background: var(--pink); }
+.legend i.teal { background: var(--teal); }
+.readout { min-height: 38px; margin: 0 0 6px; font-size: 13px; line-height: 1.35; color: #d1d1d6; background: #2c2c2e; border-radius: 10px; padding: 6px 10px; }
+.readout b { display: inline; font-size: 13px; margin: 0; color: #fff; }

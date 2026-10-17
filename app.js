@@ -551,22 +551,38 @@ function loadProgress() {
     .catch(err => { if (err.message !== 'Bad key') document.getElementById('progBody').textContent = 'Error: ' + err.message; });
 }
 
-// Per exercise, per day: heaviest weight, total reps, volume (reps x weight).
+// Per exercise, per day: every set that day (same exercise in two workouts on one day is combined).
 function buildExerciseData(sessions) {
   const ex = {};
   (sessions || []).forEach(s => {
     s.exercises.forEach(e => {
       const rec = ex[e.exercise] = ex[e.exercise] || { name: e.exercise, days: {}, last: '' };
-      const d = rec.days[s.date] = rec.days[s.date] || { date: s.date, top: 0, reps: 0, volume: 0 };
-      e.sets.forEach(st => {
-        d.top = Math.max(d.top, st.weight);
-        d.reps += st.reps;
-        d.volume += st.reps * st.weight;
-      });
+      const d = rec.days[s.date] = rec.days[s.date] || { date: s.date, sets: [] };
+      e.sets.forEach(st => d.sets.push({ reps: st.reps, weight: st.weight }));
       if (s.date > rec.last) rec.last = s.date;
     });
   });
   return ex;
+}
+
+function mean(a) { return a.reduce((x, y) => x + y, 0) / a.length; }
+
+// Turn one day's sets into the numbers the charts use.
+function summarizeDay(d) {
+  const w = d.sets.map(s => s.weight), r = d.sets.map(s => s.reps);
+  // estimated one-rep max (Epley) from the best set of the day
+  const orm = Math.max.apply(null, d.sets.map(s => s.weight > 0 ? s.weight * (1 + s.reps / 30) : 0));
+  const best = d.sets.reduce((b, s) => (s.weight * (1 + s.reps / 30) > b.weight * (1 + b.reps / 30) ? s : b), d.sets[0]);
+  return {
+    date: d.date, sets: d.sets,
+    wAvg: mean(w), wMin: Math.min.apply(null, w), wMax: Math.max.apply(null, w),
+    rAvg: mean(r), rMin: Math.min.apply(null, r), rMax: Math.max.apply(null, r),
+    orm: orm, best: best
+  };
+}
+
+function setsText(sets) {
+  return sets.map((st, i) => 'Set ' + (i + 1) + ': ' + st.reps + ' × ' + (st.weight > 0 ? fmtNum(st.weight) : 'body weight')).join(' · ');
 }
 
 function renderProgress() {
@@ -595,21 +611,19 @@ function renderProgress() {
     renderProgress();
   };
 
-  const days = Object.keys(ex[chosen].days).sort().map(k => ex[chosen].days[k]);
-  const bodyweightOnly = days.every(d => d.top === 0);
+  const days = Object.keys(ex[chosen].days).sort().map(k => summarizeDay(ex[chosen].days[k]));
+  const bodyweightOnly = days.every(d => d.wMax === 0);
   body.textContent = '';
 
   // headline numbers
   const first = days[0], last = days[days.length - 1];
-  const key = bodyweightOnly ? 'reps' : 'top';
-  const unit = bodyweightOnly ? ' reps' : '';
-  const best = Math.max.apply(null, days.map(d => d[key]));
+  const key = bodyweightOnly ? 'rAvg' : 'wAvg';
   const change = last[key] - first[key];
   const tiles = document.createElement('div');
   tiles.className = 'tiles';
   [[days.length, days.length === 1 ? 'session' : 'sessions'],
-   [fmtNum(best) + unit, bodyweightOnly ? 'best day' : 'best weight'],
-   [(change > 0 ? '+' : '') + fmtNum(change) + unit, days.length > 1 ? 'since first' : 'change']
+   [fmtNum(last[key]), bodyweightOnly ? 'avg reps' : 'avg weight'],
+   [(change > 0 ? '+' : '') + fmtNum(change), days.length > 1 ? 'since first' : 'change']
   ].forEach(t => {
     const d = document.createElement('div');
     d.className = 'tile';
@@ -620,11 +634,26 @@ function renderProgress() {
   });
   body.appendChild(tiles);
 
-  if (bodyweightOnly) {
-    body.appendChild(makeChart('Total reps per session', days.map(d => ({ date: d.date, v: d.reps })), ''));
-  } else {
-    body.appendChild(makeChart('Heaviest weight per session', days.map(d => ({ date: d.date, v: d.top })), ''));
-    body.appendChild(makeChart('Total volume per session', days.map(d => ({ date: d.date, v: d.volume })), ''));
+  const shortSets = d => setsText(d.sets);
+  if (!bodyweightOnly) {
+    body.appendChild(chartCard('Weight over time',
+      'Line = average of all sets · bar = lightest to heaviest · dots = each set',
+      [{ val: 'wAvg', lo: 'wMin', hi: 'wMax', dots: 'weight', height: 200, ticks: 4 }], days,
+      d => ['avg ' + fmtNum(d.wAvg), shortSets(d)]));
+  }
+  body.appendChild(chartCard('Reps over time',
+    'Line = average of all sets · bar = fewest to most reps · dots = each set',
+    [{ val: 'rAvg', lo: 'rMin', hi: 'rMax', dots: 'reps', height: 200, ticks: 4 }], days,
+    d => ['avg ' + fmtNum(d.rAvg) + ' reps', shortSets(d)]));
+  if (!bodyweightOnly) {
+    body.appendChild(chartCard('Average set per workout', 'Both measures share the same dates',
+      [{ val: 'wAvg', height: 120, ticks: 3, noX: true, name: 'Avg weight', color: 'pink' },
+       { val: 'rAvg', height: 140, ticks: 3, name: 'Avg reps', color: 'teal' }], days,
+      d => ['avg set: ' + fmtNum(d.rAvg) + ' reps × ' + fmtNum(d.wAvg), ''], true));
+    body.appendChild(chartCard('Estimated one-rep max',
+      'Calculated from your normal sets (best set each day). Nothing extra to log.',
+      [{ val: 'orm', height: 200, ticks: 4, color: 'teal' }], days,
+      d => ['est. 1RM ' + fmtNum(d.orm), 'from your best set: ' + d.best.reps + ' × ' + fmtNum(d.best.weight)]));
   }
 }
 
@@ -659,84 +688,116 @@ function svgEl(name, attrs) {
   return e;
 }
 
-// A simple line chart. pts = [{ date: 'YYYY-MM-DD', v: number }]. Touch or hover shows the value.
-function makeChart(title, pts) {
-  const card = document.createElement('div');
-  card.className = 'card chartcard';
-  const h = document.createElement('b');
-  h.textContent = title;
-  card.appendChild(h);
-
-  const W = 340, H = 190, L = 40, R = 14, T = 12, B = 26;
-  const vals = pts.map(p => p.v);
-  let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
-  if (lo === hi) { const pad = Math.max(1, Math.abs(hi) * 0.1); lo -= pad; hi += pad; }
-  else { const pad = (hi - lo) * 0.15; lo = Math.max(0, lo - pad); hi += pad; }
-  const ticks = niceTicks(lo, hi, 3);
-  lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
-  const d0 = dayNumber(pts[0].date), d1 = dayNumber(pts[pts.length - 1].date);
-  const X = p => pts.length === 1 || d1 === d0 ? (L + (W - L - R) / 2) : L + (dayNumber(p.date) - d0) / (d1 - d0) * (W - L - R);
+// One line chart over the days. spec: { val, lo, hi, dots, height, ticks, noX, color }.
+// Returns { svg, select(i) }; select() moves the crosshair to day i.
+function makeLineChart(days, spec) {
+  const W = 340, H = spec.height || 200, L = 40, R = 14, T = 14, B = spec.noX ? 8 : 26;
+  const teal = spec.color === 'teal';
+  const loKey = spec.lo || spec.val, hiKey = spec.hi || spec.val;
+  let lo = Math.min.apply(null, days.map(d => d[loKey])), hi = Math.max.apply(null, days.map(d => d[hiKey]));
+  const pad = (hi - lo) * 0.15 || Math.max(1, Math.abs(hi) * 0.1);
+  const ticks = niceTicks(Math.max(0, lo - pad), hi + pad, spec.ticks || 3);
+  lo = Math.min(ticks[0], lo - pad); hi = Math.max(ticks[ticks.length - 1], hi + pad);
+  const d0 = dayNumber(days[0].date), d1 = dayNumber(days[days.length - 1].date);
+  const X = d => days.length === 1 || d1 === d0 ? (L + (W - L - R) / 2) : L + (dayNumber(d.date) - d0) / (d1 - d0) * (W - L - R);
   const Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
 
   const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'chart', role: 'img' });
-  svg.setAttribute('aria-label', title + ': ' + pts.map(p => shortDate(p.date) + ' ' + fmtNum(p.v)).join(', '));
+  svg.setAttribute('aria-label', (spec.name || 'Chart') + ': ' + days.map(d => shortDate(d.date) + ' ' + fmtNum(d[spec.val])).join(', '));
   ticks.forEach(t => {
     svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: Y(t), y2: Y(t), class: 'grid' }));
     const tx = svgEl('text', { x: L - 6, y: Y(t) + 4, class: 'axis', 'text-anchor': 'end' });
     tx.textContent = fmtNum(t);
     svg.appendChild(tx);
   });
-  // x labels: first, last (and middle when there is room)
-  const xl = pts.length === 1 ? [pts[0]] : [pts[0], pts[pts.length - 1]];
-  xl.forEach((p, i) => {
-    const anchor = pts.length === 1 ? 'middle' : (i === 0 ? 'start' : 'end');
-    const tx = svgEl('text', { x: pts.length === 1 ? X(p) : (i === 0 ? L : W - R), y: H - 6, class: 'axis', 'text-anchor': anchor });
-    tx.textContent = shortDate(p.date);
-    svg.appendChild(tx);
-  });
-  if (pts.length > 1) {
-    svg.appendChild(svgEl('polyline', { points: pts.map(p => X(p) + ',' + Y(p.v)).join(' '), class: 'line' }));
+  if (!spec.noX) {
+    const xl = days.length === 1 ? [days[0]] : [days[0], days[days.length - 1]];
+    xl.forEach((d, i) => {
+      const tx = svgEl('text', { x: days.length === 1 ? X(d) : (i === 0 ? L : W - R), y: H - 6, class: 'axis',
+        'text-anchor': days.length === 1 ? 'middle' : (i === 0 ? 'start' : 'end') });
+      tx.textContent = shortDate(d.date);
+      svg.appendChild(tx);
+    });
   }
-  pts.forEach(p => {
-    svg.appendChild(svgEl('circle', { cx: X(p), cy: Y(p.v), r: 4.5, class: 'dot' }));
+  if (spec.lo) days.forEach(d => {
+    if (d[spec.hi] > d[spec.lo]) svg.appendChild(svgEl('line', { x1: X(d), x2: X(d), y1: Y(d[spec.hi]), y2: Y(d[spec.lo]), class: teal ? 'band teal' : 'band' }));
   });
-  // direct label on the latest point
-  const lp = pts[pts.length - 1];
-  const lt = svgEl('text', { x: Math.min(X(lp), W - R - 2), y: Y(lp.v) - 10, class: 'valabel', 'text-anchor': pts.length === 1 ? 'middle' : 'end' });
-  lt.textContent = fmtNum(lp.v);
+  if (spec.dots) days.forEach(d => d.sets.forEach(st => svg.appendChild(svgEl('circle', { cx: X(d), cy: Y(st[spec.dots]), r: 2.2, class: 'setdot' }))));
+  if (days.length > 1) svg.appendChild(svgEl('polyline', { points: days.map(d => X(d) + ',' + Y(d[spec.val])).join(' '), class: teal ? 'line teal' : 'line' }));
+  days.forEach(d => svg.appendChild(svgEl('circle', { cx: X(d), cy: Y(d[spec.val]), r: 4.5, class: teal ? 'dot teal' : 'dot' })));
+  const lp = days[days.length - 1];
+  const lt = svgEl('text', { x: Math.min(X(lp), W - R - 2), y: Y(lp[spec.val]) - 10, class: 'valabel', 'text-anchor': days.length === 1 ? 'middle' : 'end' });
+  lt.textContent = fmtNum(lp[spec.val]);
   svg.appendChild(lt);
 
-  // hover / touch layer
   const cross = svgEl('line', { y1: T, y2: H - B, class: 'cross', visibility: 'hidden' });
   const ring = svgEl('circle', { r: 7, class: 'ring', visibility: 'hidden' });
   svg.appendChild(cross); svg.appendChild(ring);
-  const tip = document.createElement('div');
-  tip.className = 'tip hidden';
-  function show(clientX) {
-    const r = svg.getBoundingClientRect();
-    const x = (clientX - r.left) / r.width * W;
-    let best = pts[0];
-    pts.forEach(p => { if (Math.abs(X(p) - x) < Math.abs(X(best) - x)) best = p; });
-    cross.setAttribute('x1', X(best)); cross.setAttribute('x2', X(best)); cross.setAttribute('visibility', 'visible');
-    ring.setAttribute('cx', X(best)); ring.setAttribute('cy', Y(best.v)); ring.setAttribute('visibility', 'visible');
-    tip.textContent = shortDate(best.date) + ' · ' + fmtNum(best.v);
-    tip.classList.remove('hidden');
-    const px = X(best) / W * r.width;
-    tip.style.left = Math.max(40, Math.min(r.width - 40, px)) + 'px';
-  }
-  function hide() {
-    cross.setAttribute('visibility', 'hidden'); ring.setAttribute('visibility', 'hidden'); tip.classList.add('hidden');
-  }
-  svg.addEventListener('pointerdown', e => show(e.clientX));
-  svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons) show(e.clientX); });
-  svg.addEventListener('pointerleave', hide);
-  svg.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') setTimeout(hide, 1500); });
+  return {
+    svg: svg,
+    select: i => {
+      const d = days[i];
+      cross.setAttribute('x1', X(d)); cross.setAttribute('x2', X(d)); cross.setAttribute('visibility', 'visible');
+      ring.setAttribute('cx', X(d)); ring.setAttribute('cy', Y(d[spec.val])); ring.setAttribute('visibility', 'visible');
+    },
+    nearest: clientX => {
+      const r = svg.getBoundingClientRect();
+      const x = (clientX - r.left) / r.width * W;
+      let best = 0;
+      days.forEach((d, i) => { if (Math.abs(X(d) - x) < Math.abs(X(days[best]) - x)) best = i; });
+      return best;
+    }
+  };
+}
 
+// A card with a readout row on top and one or more charts that move together.
+// Touch or hover a chart: the readout shows that day. By default it shows the latest day.
+function chartCard(title, sub, specs, days, readoutFn, legend) {
+  const card = document.createElement('div');
+  card.className = 'card chartcard';
+  const h = document.createElement('b');
+  h.textContent = title;
+  const s = document.createElement('div');
+  s.className = 'sub2';
+  s.textContent = sub;
+  card.appendChild(h); card.appendChild(s);
+  if (legend) {
+    const lg = document.createElement('div');
+    lg.className = 'legend';
+    specs.forEach(sp => {
+      const item = document.createElement('span');
+      const dot = document.createElement('i');
+      dot.className = sp.color === 'teal' ? 'teal' : '';
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(sp.name));
+      lg.appendChild(item);
+    });
+    card.appendChild(lg);
+  }
+  const readout = document.createElement('div');
+  readout.className = 'readout';
+  card.appendChild(readout);
   const wrap = document.createElement('div');
-  wrap.className = 'chartwrap';
-  wrap.appendChild(svg);
-  wrap.appendChild(tip);
   card.appendChild(wrap);
+
+  const charts = specs.map(sp => makeLineChart(days, sp));
+  function select(i) {
+    const d = days[i], parts = readoutFn(d);
+    readout.textContent = '';
+    const b = document.createElement('b');
+    b.textContent = shortDate(d.date);
+    readout.appendChild(b);
+    readout.appendChild(document.createTextNode(' · ' + parts[0]));
+    if (parts[1]) { readout.appendChild(document.createElement('br')); readout.appendChild(document.createTextNode(parts[1])); }
+    charts.forEach(c => c.select(i));
+  }
+  charts.forEach(c => {
+    wrap.appendChild(c.svg);
+    c.svg.addEventListener('pointerdown', e => select(c.nearest(e.clientX)));
+    c.svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons) select(c.nearest(e.clientX)); });
+    c.svg.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') select(days.length - 1); });
+  });
+  select(days.length - 1);
   return card;
 }
 
