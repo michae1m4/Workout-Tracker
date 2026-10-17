@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#000000">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" href="icon.png">
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 
@@ -31,16 +31,14 @@
     <h1>Library</h1>
     <div id="list"></div>
     <button class="full" onclick="showEditor()">+ New workout</button>
-    <div class="ver">Version 11</div>
+    <div class="ver">Version 12</div>
   </div>
 
   <!-- HISTORY TAB (placeholder for now) -->
   <div id="historyView" class="hidden">
     <h1>History</h1>
-    <div class="card">
-      <b>Coming next</b>
-      <span class="sub">Your completed workouts will show up here.</span>
-    </div>
+    <div id="historyList"></div>
+    <div class="ver">Version 12</div>
     <div id="layoutInfo" class="info"></div>
   </div>
 
@@ -108,7 +106,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=11"></script>
-  <script src="app.js?v=11"></script>
+  <script src="config.js?v=12"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

@@ -123,6 +123,7 @@ async function flushQueue() {
       updateSyncStatus();
     }
     updateSyncStatus(sentAny);
+    if (sentAny && !document.getElementById('historyView').classList.contains('hidden')) loadHistory();
     if (opsChanged && !pendingOps()) refreshListQuietly();
   } finally {
     flushing = false;
@@ -320,6 +321,7 @@ function showLayoutInfo() {
 function showTab(tab) {
   showOnly(TAB_VIEWS[tab]);
   if (tab === 'list') loadList();
+  if (tab === 'history') loadHistory();
 }
 
 function showList() { showTab('list'); }
@@ -452,6 +454,103 @@ function renderList(workouts) {
     card.appendChild(head);
     card.appendChild(actions);
     list.appendChild(card);
+  });
+}
+
+// ---------- history tab ----------
+// Same idea as the Library: show the saved copy instantly, then refresh from the Sheet.
+function loadHistory() {
+  const box = document.getElementById('historyList');
+  const cached = readJSON('wt_history', null);
+  if (cached) {
+    renderHistory(cached);
+  } else {
+    box.textContent = '';
+    for (let i = 0; i < 3; i++) {
+      const sk = document.createElement('div');
+      sk.className = 'skeleton';
+      box.appendChild(sk);
+    }
+  }
+  api('getHistory')
+    .then(fresh => {
+      if (loadQueue().some(i => !i.op)) return; // sets still waiting to be sent: the Sheet is behind
+      writeJSON('wt_history', fresh);
+      if (!cached || JSON.stringify(fresh) !== JSON.stringify(cached)) renderHistory(fresh);
+    })
+    .catch(err => {
+      if (err.message === 'Bad key') return;
+      if (!cached) box.textContent = 'Error: ' + err.message;
+    });
+}
+
+function prettyDate(iso) {
+  const p = String(iso).split('-');
+  if (p.length !== 3) return String(iso);
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((today - d) / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function renderHistory(sessions) {
+  const box = document.getElementById('historyList');
+  box.textContent = '';
+  if (!sessions || sessions.length === 0) {
+    box.textContent = 'No completed workouts yet. Log a set and it will show up here.';
+    return;
+  }
+  sessions.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const head = document.createElement('div');
+    head.className = 'cardhead';
+    const text = document.createElement('div');
+    const title = document.createElement('b');
+    title.textContent = s.workout;
+    const sub = document.createElement('span');
+    sub.className = 'sub';
+    sub.textContent = prettyDate(s.date) + ' · ' + s.sets + (s.sets === 1 ? ' set' : ' sets');
+    text.appendChild(title);
+    text.appendChild(sub);
+    const chev = document.createElement('div');
+    chev.className = 'chev';
+    chev.textContent = '›';
+    head.appendChild(text);
+    head.appendChild(chev);
+
+    const detail = document.createElement('div');
+    detail.className = 'hdetail hidden';
+    s.exercises.forEach(e => {
+      const t = document.createElement('div');
+      t.className = 'hex';
+      t.textContent = e.exercise;
+      const r = document.createElement('span');
+      r.textContent = e.resistance;
+      t.appendChild(r);
+      detail.appendChild(t);
+      e.sets.forEach(st => {
+        const line = document.createElement('div');
+        line.className = 'hset';
+        line.textContent = 'Set ' + st.set + '   ' + st.reps + ' reps × ' + (st.weight > 0 ? st.weight : 'body weight');
+        detail.appendChild(line);
+      });
+    });
+    const total = document.createElement('div');
+    total.className = 'hset hvol';
+    total.textContent = 'Total volume ' + Math.round(s.volume).toLocaleString();
+    detail.appendChild(total);
+
+    head.onclick = () => {
+      const open = detail.classList.toggle('hidden') === false;
+      chev.textContent = open ? '⌄' : '›';
+    };
+    card.appendChild(head);
+    card.appendChild(detail);
+    box.appendChild(card);
   });
 }
 
