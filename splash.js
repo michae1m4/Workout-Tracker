@@ -69,6 +69,14 @@
     return true;
   }
 
+  // tapping the version number on Home replays the animation, and explains if it cannot play
+  window.replaySplash = function () {
+    if (!splash.animate) { alert('This browser cannot play the animation.'); return; }
+    if (reduced()) { alert('The animation is skipped because Reduce Motion is on (Settings > Accessibility > Motion). Turn it off to see it.'); return; }
+    if (running) return;
+    play(false);
+  };
+
   // tap to skip
   splash.addEventListener('click', function () { if (running) finish(); });
 

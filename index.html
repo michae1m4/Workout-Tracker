@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap">
-  <link rel="stylesheet" href="styles.css?v=33">
+  <link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body>
 
@@ -44,7 +44,8 @@
       </g>
     </svg>
   </div>
-  <script src="splash.js?v=33"></script>
+  <script>window.replaySplash = function () { alert("The opening animation file (splash.js) did not load. Upload splash.js to the same folder as index.html on GitHub."); };</script>
+  <script src="splash.js?v=34"></script>
 
   <!-- SETUP VIEW: shown once, asks for the secret key -->
   <div id="setupView" class="hidden">
@@ -62,7 +63,7 @@
     <h1 id="homeTitle">Home</h1>
     <div id="homeDate" class="homedate"></div>
     <div id="homeBody"></div>
-    <div class="ver">Version 33</div>
+    <div class="ver" onclick="replaySplash()">Version 34</div>
   </div>
 
   <!-- SCHEDULE SCREEN -->
@@ -150,7 +151,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=33"></script>
-  <script src="app.js?v=33"></script>
+  <script src="config.js?v=34"></script>
+  <script src="app.js?v=34"></script>
 </body>
 </html>
