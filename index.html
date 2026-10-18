@@ -14,9 +14,37 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap">
-  <link rel="stylesheet" href="styles.css?v=32">
+  <link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body>
+
+  <!-- OPENING LOGO SCREEN: plays on first open and after an hour or more away (see splash.js) -->
+  <div id="splash" aria-hidden="true">
+    <svg viewBox="0 0 180 180">
+      <defs>
+        <clipPath id="spClip"><g>
+          <rect x="22" y="71" width="15" height="37" rx="7"/><rect x="38" y="60" width="15" height="59" rx="7"/><rect x="53" y="83" width="74" height="13"/>
+          <rect x="127" y="60" width="15" height="59" rx="7"/><rect x="143" y="71" width="15" height="37" rx="7"/></g></clipPath>
+        <linearGradient id="spSoft" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#000"/><stop id="sf1" offset=".29" stop-color="#fff"/><stop id="sf2" offset=".71" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
+        <mask id="spWipe" maskUnits="userSpaceOnUse" x="-80" y="0" width="340" height="180"><rect id="wipeR" x="-10" y="0" width="200" height="180" fill="url(#spSoft)"/></mask>
+        <linearGradient id="spShine" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop id="spMid" offset=".5" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      </defs>
+      <g id="spAll">
+        <g class="spOutline">
+          <rect id="oL"/><rect id="iL"/><rect id="bar"/><rect id="iR"/><rect id="oR"/>
+        </g>
+        <g class="spFill" mask="url(#spWipe)">
+          <rect id="f_oL" x="22" y="71" width="15" height="37" rx="7"/>
+          <rect id="f_iL" x="38" y="60" width="15" height="59" rx="7"/>
+          <rect id="f_bar" x="53" y="83" width="74" height="13"/>
+          <rect id="f_iR" x="127" y="60" width="15" height="59" rx="7"/>
+          <rect id="f_oR" x="143" y="71" width="15" height="37" rx="7"/>
+        </g>
+        <g clip-path="url(#spClip)"><rect id="spBand" x="-60" y="40" width="50" height="100" fill="url(#spShine)" transform="skewX(-18)" style="transform-box:view-box;transform-origin:0 0"/></g>
+      </g>
+    </svg>
+  </div>
+  <script src="splash.js?v=33"></script>
 
   <!-- SETUP VIEW: shown once, asks for the secret key -->
   <div id="setupView" class="hidden">
@@ -34,7 +62,7 @@
     <h1 id="homeTitle">Home</h1>
     <div id="homeDate" class="homedate"></div>
     <div id="homeBody"></div>
-    <div class="ver">Version 32</div>
+    <div class="ver">Version 33</div>
   </div>
 
   <!-- SCHEDULE SCREEN -->
@@ -122,7 +150,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=32"></script>
-  <script src="app.js?v=32"></script>
+  <script src="config.js?v=33"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>

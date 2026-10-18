@@ -493,3 +493,15 @@ body, .lrow { font-weight: 400 !important; }                                  /*
 button, button.link, .exactions button, .pbtn { font-weight: 500 !important; } /* buttons */
 .setrow button { font-weight: 600 !important; }                               /* Log button */
 button.tab { font-weight: 600 !important; }                                   /* tab labels */
+
+
+/* ---------- v33: opening logo screen (animation is driven by splash.js) ---------- */
+#splash {
+  display: none; position: fixed; inset: 0; z-index: 1000; place-items: center; overflow: hidden;
+  background: linear-gradient(150deg, #ff2d6a 0%, #fa114f 38%, #ff7a3d 100%);
+}
+#splash svg { width: min(56vw, 300px); height: auto; overflow: visible; }
+#splash svg * { transform-box: fill-box; transform-origin: center; }
+#splash .spOutline rect { fill: none; stroke: #16070c; stroke-linejoin: round; }
+#splash .spFill rect { fill: #16070c; }
+@media (prefers-reduced-motion: reduce) { #splash { display: none !important; } }
