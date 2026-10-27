@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap">
-  <link rel="stylesheet" href="styles.css?v=36">
+  <link rel="stylesheet" href="styles.css?v=37">
 </head>
 <body>
 
@@ -46,7 +46,7 @@
     </div>
   </div>
   <script>window.replaySplash = function () { alert("The opening animation file (splash.js) did not load. Upload splash.js to the same folder as index.html on GitHub."); };</script>
-  <script src="splash.js?v=36"></script>
+  <script src="splash.js?v=37"></script>
 
   <!-- SETUP VIEW: shown once, asks for the secret key -->
   <div id="setupView" class="hidden">
@@ -64,7 +64,7 @@
     <h1 id="homeTitle">Home</h1>
     <div id="homeDate" class="homedate"></div>
     <div id="homeBody"></div>
-    <div class="ver" onclick="replaySplash()">Version 36</div>
+    <div class="ver" onclick="replaySplash()">Version 37</div>
   </div>
 
   <!-- SCHEDULE SCREEN -->
@@ -78,8 +78,14 @@
   <!-- LIBRARY TAB -->
   <div id="listView" class="hidden">
     <h1>Library</h1>
+    <div class="segtabs" role="tablist">
+      <button id="tabWorkouts" class="segtab on" onclick="setLibMode('workouts')">Workouts</button>
+      <button id="tabExercises" class="segtab" onclick="setLibMode('exercises')">Exercises</button>
+    </div>
     <div id="list"></div>
-    <button class="full" onclick="showEditor()">+ Create New Workout</button>
+    <div id="exList" class="hidden"></div>
+    <button id="btnNewWorkout" class="full" onclick="showEditor()">+ Create New Workout</button>
+    <button id="btnNewExercise" class="full hidden" onclick="openExForm(null, 'lib')">+ New Exercise</button>
   </div>
 
   <!-- HISTORY TAB (placeholder for now) -->
@@ -102,7 +108,8 @@
     <label>Workout name</label>
     <input id="workoutName" placeholder="e.g. Push Day">
     <div id="exerciseRows" style="margin-top:12px"></div>
-    <button class="secondary full" onclick="addRow(null, true)">+ Add exercise</button>
+    <div id="exHint" class="empty" style="margin:4px 0 12px">No exercises yet. Add them from your exercise library.</div>
+    <button class="secondary full" onclick="openPicker()">+ Add exercise</button>
     <div class="actions">
       <button id="builderSave" onclick="saveCurrent()">Save workout</button>
       <button class="secondary" onclick="leaveEditor()">Cancel</button>
@@ -117,6 +124,27 @@
     <div id="runBody"></div>
     <div class="actions">
       <button onclick="finishWorkout()">Finish workout</button>
+    </div>
+  </div>
+
+  <!-- EXERCISE SHEET: pick an exercise from the library, or create / edit one -->
+  <div id="sheet" class="sheetwrap hidden" onclick="if (event.target === this) closeSheet()">
+    <div class="sheet">
+      <div id="sheetPick">
+        <h2>Add exercise</h2>
+        <input id="pickSearch" placeholder="Search your library" autocomplete="off" oninput="renderPick()">
+        <div id="pickList"></div>
+        <div class="actions"><button class="secondary" onclick="openExForm(null, 'pick')">+ New exercise</button><button class="secondary" onclick="closeSheet()">Close</button></div>
+      </div>
+      <div id="sheetForm" class="hidden">
+        <h2 id="exFormTitle">New exercise</h2>
+        <label>Exercise name</label>
+        <input id="exName" placeholder="e.g. Bench Press" autocomplete="off">
+        <label style="margin-top:12px">Resistance Type</label>
+        <select id="exRes"></select>
+        <div class="actions"><button id="exSave" onclick="saveExerciseForm()">Save</button><button class="secondary" onclick="closeSheet()">Cancel</button></div>
+        <div id="exMsg" class="msg"></div>
+      </div>
     </div>
   </div>
 
@@ -152,7 +180,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=36"></script>
-  <script src="app.js?v=36"></script>
+  <script src="config.js?v=37"></script>
+  <script src="app.js?v=37"></script>
 </body>
 </html>

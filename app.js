@@ -127,7 +127,7 @@ async function flushQueue() {
       if (!document.getElementById('historyView').classList.contains('hidden')) loadHistory();
       else prefetchHistory(); // so the next visit to History already has your new workout
     }
-    if (opsChanged && !pendingOps()) refreshListQuietly();
+    if (opsChanged && !pendingOps()) { refreshListQuietly(); refreshExercisesQuietly(); }
   } finally {
     flushing = false;
   }
@@ -214,7 +214,7 @@ function showOnly(id) {
 function showTab(tab) {
   showOnly(TAB_VIEWS[tab]);
   if (tab === 'home') loadHome();
-  if (tab === 'list') loadList();
+  if (tab === 'list') { loadList(); if (libMode === 'exercises') loadExercises(); }
   if (tab === 'history') loadHistory();
   if (tab === 'progress') loadProgress();
 }
@@ -233,6 +233,7 @@ function saveKey() {
   if (!key) return;
   try { localStorage.setItem('wt_key', key); } catch (e) {}
   showTab('home');
+  loadExercises(); // quietly: the first time, this also builds your library from what you already have
   if (loadQueue().length > 0) flushQueue();
 }
 
@@ -250,9 +251,8 @@ function showEditor(name, from) {
   document.getElementById('builderDelete').classList.toggle('hidden', !name);
   if (name && allWorkouts[name]) {
     allWorkouts[name].forEach(ex => addRow(ex));
-  } else {
-    addRow();
   }
+  updateExHint();
 }
 
 // ---------- library (workout list) ----------
@@ -1129,7 +1129,7 @@ function startRun(name, resume) {
 
   let planned = 0;
   allWorkouts[name].forEach(ex => { planned += ex.sets; });
-  currentRun = { name: name, planned: planned, ids: new Set(resume ? resume.ids : []), sets: resume ? (resume.sets || {}) : {}, startedAt: resume ? (resume.startedAt || Date.now()) : Date.now() };
+  currentRun = { name: name, planned: planned, rowMap: {}, ids: new Set(resume ? resume.ids : []), sets: resume ? (resume.sets || {}) : {}, startedAt: resume ? (resume.startedAt || Date.now()) : Date.now() };
   if (!resume) { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
 
   allWorkouts[name].forEach((ex, exIndex) => {
@@ -1163,6 +1163,7 @@ function startRun(name, resume) {
     for (let n = 1; n <= ex.sets; n++) {
       card.appendChild(makeSetRow(name, ex, n, rows, last && last.sets[n - 1], exIndex + '-' + n));
     }
+    rows.forEach((en, i) => { currentRun.rowMap[exKey(ex.exercise) + '|' + (i + 1)] = en; }); // so sets logged from the lock screen can be ticked off here
     // after resuming, carry the numbers from the last logged set into the next empty one
     for (let i = 1; i < rows.length; i++) {
       if (rows[i - 1].done && !rows[i].done) {
@@ -1172,7 +1173,30 @@ function startRun(name, resume) {
     }
     body.appendChild(card);
   });
+  api('setActive', { workout: name }).catch(() => {}); // tells the lock-screen shortcut which workout is running
+  syncRunFromServer();
 }
+
+// Sets logged from the lock screen shortcut are saved straight to the Sheet; tick them off here when you come back.
+function syncRunFromServer() {
+  const run = currentRun;
+  if (!run || document.getElementById('runView').classList.contains('hidden')) return;
+  api('getToday', { workout: run.name }).then(list => {
+    if (currentRun !== run || !Array.isArray(list)) return;
+    let any = false;
+    list.forEach(s => {
+      const en = run.rowMap[exKey(s.exercise) + '|' + s.setNumber];
+      if (!en || en.done) return;
+      en.reps.value = s.reps;
+      en.weight.value = s.weight;
+      en.markDone(true);
+      run.sets[en.key] = { reps: s.reps, weight: s.weight };
+      any = true;
+    });
+    if (any) { saveRunState(); markDoneToday(run.name); }
+  }).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncRunFromServer(); });
 
 // Workouts logged today, remembered on this phone so Home is right before History has reloaded.
 function markDoneToday(name) {
@@ -1224,7 +1248,7 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
   const btn = document.createElement('button');
   btn.textContent = 'Log';
 
-  const entry = { reps: reps, weight: weight, done: false };
+  const entry = { reps: reps, weight: weight, done: false, key: key };
 
   function markDone(animate) {
     btn.textContent = '✓';
@@ -1235,6 +1259,7 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
     weight.disabled = true;
     entry.done = true;
   }
+  entry.markDone = markDone;
 
   btn.onclick = () => {
     const r = Number(reps.value);
@@ -1284,7 +1309,8 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
 
 // ---------- finish screen ----------
 function finishWorkout() {
-  if (!currentRun || currentRun.ids.size === 0) { // nothing was logged
+  api('clearActive').catch(() => {}); // the lock-screen shortcut stops targeting this workout
+  if (!currentRun || (currentRun.ids.size === 0 && Object.keys(currentRun.sets || {}).length === 0)) { // nothing was logged
     currentRun = null;
     clearRunState();
     showTab('home');
@@ -1298,7 +1324,7 @@ function finishWorkout() {
 function renderFinish() {
   const run = currentRun;
   if (!run) return;
-  const logged = run.ids.size;
+  const logged = Math.max(run.ids.size, Object.keys(run.sets || {}).length); // includes sets logged from the lock screen
   const pending = loadQueue().filter(i => run.ids.has(i.requestId)).length;
   const saved = logged - pending;
 
@@ -1418,29 +1444,14 @@ function enableDrag(handle, card) {
   handle.addEventListener('pointercancel', stop);
 }
 
-// Adds one exercise card. Pass the saved exercise to pre-fill it.
+// Adds one exercise card. The exercise itself (name and resistance type) comes from the exercise library;
+// here you only set sets, rest and a starting weight.
 function addRow(data, animate) {
   data = data || {};
   const card = document.createElement('div');
   card.className = animate ? 'card rowin' : 'card';
-
-  const nameInput = document.createElement('input');
-  nameInput.className = 'ex-name';
-  nameInput.placeholder = 'Exercise name';
-  nameInput.value = data.exercise || '';
-
-  const select = document.createElement('select');
-  select.className = 'ex-resistance';
-  // keep an unusual type from the Sheet instead of silently changing it
-  const types = (!data.resistance || RESISTANCE.indexOf(data.resistance) !== -1)
-    ? RESISTANCE : RESISTANCE.concat(data.resistance);
-  types.forEach(r => {
-    const opt = document.createElement('option');
-    opt.value = r;
-    opt.textContent = r;
-    select.appendChild(opt);
-  });
-  if (data.resistance) select.value = data.resistance;
+  card.dataset.exercise = data.exercise || '';
+  card.dataset.resistance = data.resistance || 'other';
 
   const sets = document.createElement('input');
   sets.className = 'ex-sets';
@@ -1467,10 +1478,15 @@ function addRow(data, animate) {
   handle.innerHTML = '<svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>';
   enableDrag(handle, card);
 
+  const info = document.createElement('div');
+  info.className = 'exinfo';
+  info.appendChild(el('b', '', data.exercise || ''));
+  info.appendChild(el('span', 'pill', data.resistance || 'other'));
+
   const exhead = document.createElement('div');
   exhead.className = 'exhead';
   exhead.appendChild(handle);
-  exhead.appendChild(nameInput);
+  exhead.appendChild(info);
 
   const remove = document.createElement('button');
   remove.className = 'secondary grow';
@@ -1479,12 +1495,8 @@ function addRow(data, animate) {
     card.style.height = card.offsetHeight + 'px';
     void card.offsetWidth;
     card.classList.add('leaving');
-    setTimeout(() => card.remove(), 260);
+    setTimeout(() => { card.remove(); updateExHint(); }, 260);
   };
-
-  const row1 = document.createElement('div');
-  row1.className = 'row';
-  row1.appendChild(makeField('Resistance Type', select));
 
   const row2 = document.createElement('div');
   row2.className = 'row';
@@ -1497,11 +1509,16 @@ function addRow(data, animate) {
   exactions.appendChild(remove);
 
   card.appendChild(exhead);
-  card.appendChild(row1);
   card.appendChild(row2);
   card.appendChild(exactions);
   document.getElementById('exerciseRows').appendChild(card);
+  updateExHint();
   if (animate) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updateExHint() {
+  const n = document.querySelectorAll('#exerciseRows .card:not(.leaving)').length;
+  document.getElementById('exHint').classList.toggle('hidden', n > 0);
 }
 
 function numOr(value, fallback, min, max) {
@@ -1537,12 +1554,13 @@ function saveCurrent() {
 
   const exercises = [];
   document.querySelectorAll('#exerciseRows .card').forEach(card => {
-    const exName = card.querySelector('.ex-name').value.trim();
+    if (card.classList.contains('leaving')) return;
+    const exName = card.dataset.exercise;
     if (!exName) return; // skip blank rows
     const w = Number(card.querySelector('.ex-weight').value);
     exercises.push({
       exercise: exName,
-      resistance: card.querySelector('.ex-resistance').value,
+      resistance: card.dataset.resistance,
       sets: numOr(card.querySelector('.ex-sets').value, 3, 1, 20),
       rest: numOr(card.querySelector('.ex-rest').value, 90, 0, 3600),
       weight: w > 0 ? w : ''
@@ -1560,6 +1578,189 @@ function saveCurrent() {
   msg.textContent = '';
   enqueueOp('saveWorkout', payload);        // ...let the Sheet catch up in the background...
   leaveEditor();                            // ...and go straight back where you came from
+}
+
+// ---------- exercise library ----------
+// Every exercise lives here once. Workouts pick from this list, so an exercise has exactly one name everywhere,
+// and your history and graphs add up correctly.
+const EX_KEY = 'wt_exercises';
+let libMode = 'workouts';
+let sheetCtx = { from: 'lib', editing: null };
+
+function exKey(s) { return String(s).replace(/\s+/g, ' ').trim().toLowerCase(); }
+function exClean(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+function getLibrary() { const l = readJSON(EX_KEY, null); return Array.isArray(l) ? l : []; }
+function saveLibrary(l) {
+  l.sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
+  writeJSON(EX_KEY, l);
+}
+function findExercise(name) { const k = exKey(name); return getLibrary().find(e => exKey(e.name) === k) || null; }
+
+function setLibMode(m) {
+  libMode = m;
+  const ex = m === 'exercises';
+  document.getElementById('tabWorkouts').classList.toggle('on', !ex);
+  document.getElementById('tabExercises').classList.toggle('on', ex);
+  document.getElementById('list').classList.toggle('hidden', ex);
+  document.getElementById('exList').classList.toggle('hidden', !ex);
+  document.getElementById('btnNewWorkout').classList.toggle('hidden', ex);
+  document.getElementById('btnNewExercise').classList.toggle('hidden', !ex);
+  if (ex) loadExercises();
+}
+
+function loadExercises() {
+  const cached = readJSON(EX_KEY, null);
+  renderExercises(Array.isArray(cached) ? cached : []);
+  api('getExercises').then(fresh => {
+    if (pendingOps() || !Array.isArray(fresh)) return;
+    const first = cached === null;
+    saveLibrary(fresh);
+    renderExercises(getLibrary());
+    if (first) { refreshListQuietly(); prefetchHistory(); } // the first build can merge spellings, so re-read workouts and history
+  }).catch(() => {});
+}
+function refreshExercisesQuietly() {
+  api('getExercises').then(fresh => {
+    if (pendingOps() || !Array.isArray(fresh)) return;
+    saveLibrary(fresh);
+    if (libMode === 'exercises') renderExercises(getLibrary());
+  }).catch(() => {});
+}
+
+function workoutsUsing(name) {
+  const k = exKey(name), w = readJSON('wt_workouts', {});
+  return Object.keys(w).filter(n => (w[n] || []).some(e => exKey(e.exercise) === k)).length;
+}
+
+function renderExercises(list) {
+  const box = document.getElementById('exList');
+  box.textContent = '';
+  if (list.length === 0) {
+    box.appendChild(el('div', 'empty', 'No exercises yet. Create your first one, then use it in any workout.'));
+    box.style.marginBottom = '16px';
+    return;
+  }
+  box.style.marginBottom = '0';
+  list.forEach(ex => {
+    const card = el('div', 'card wcard');
+    card.onclick = () => openExForm(ex, 'lib');
+    const main = el('div', 'wmain');
+    main.appendChild(el('b', '', ex.name));
+    const sub = el('div', 'exmeta');
+    sub.appendChild(el('span', 'pill', ex.resistance));
+    const n = workoutsUsing(ex.name);
+    sub.appendChild(el('span', '', n === 0 ? 'Not in a workout yet' : 'In ' + n + (n === 1 ? ' workout' : ' workouts')));
+    main.appendChild(sub);
+    const trash = el('button', 'trash');
+    trash.setAttribute('aria-label', 'Delete ' + ex.name);
+    trash.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+    trash.onclick = e => { e.stopPropagation(); deleteExerciseFromLibrary(ex.name); };
+    card.appendChild(main);
+    card.appendChild(trash);
+    box.appendChild(card);
+  });
+}
+
+function deleteExerciseFromLibrary(name) {
+  const n = workoutsUsing(name);
+  const extra = n > 0 ? ' It is used in ' + n + (n === 1 ? ' workout' : ' workouts') + ', which keep it, and your history is not touched.' : '';
+  if (!confirm('Remove "' + name + '" from your exercise library?' + extra)) return;
+  const k = exKey(name);
+  saveLibrary(getLibrary().filter(e => exKey(e.name) !== k));
+  enqueueOp('deleteExercise', { name: name });
+  renderExercises(getLibrary());
+}
+
+// ----- the sheet (picker + create/edit form) -----
+function showSheet(which) {
+  document.getElementById('sheetPick').classList.toggle('hidden', which !== 'pick');
+  document.getElementById('sheetForm').classList.toggle('hidden', which !== 'form');
+  document.getElementById('sheet').classList.remove('hidden');
+}
+function closeSheet() { document.getElementById('sheet').classList.add('hidden'); }
+
+function openPicker() {
+  document.getElementById('pickSearch').value = '';
+  renderPick();
+  showSheet('pick');
+}
+function renderPick() {
+  const q = exKey(document.getElementById('pickSearch').value);
+  const inWorkout = new Set(Array.from(document.querySelectorAll('#exerciseRows .card:not(.leaving)')).map(c => exKey(c.dataset.exercise)));
+  const box = document.getElementById('pickList');
+  box.textContent = '';
+  const items = getLibrary().filter(e => !q || exKey(e.name).indexOf(q) !== -1);
+  if (items.length === 0) {
+    box.appendChild(el('div', 'empty', getLibrary().length === 0 ? 'Your library is empty. Create your first exercise.' : 'No match. Create it as a new exercise.'));
+    return;
+  }
+  items.forEach(ex => {
+    const added = inWorkout.has(exKey(ex.name));
+    const row = el('button', 'pickrow' + (added ? ' off' : ''));
+    row.appendChild(el('span', '', ex.name));
+    row.appendChild(el('small', '', added ? 'Added' : ex.resistance));
+    row.onclick = () => { addRow({ exercise: ex.name, resistance: ex.resistance }, true); closeSheet(); };
+    box.appendChild(row);
+  });
+}
+
+function openExForm(ex, from) {
+  sheetCtx = { from: from, editing: ex ? ex.name : null };
+  const sel = document.getElementById('exRes');
+  sel.textContent = '';
+  const types = (!ex || RESISTANCE.indexOf(ex.resistance) !== -1) ? RESISTANCE : RESISTANCE.concat(ex.resistance);
+  types.forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; sel.appendChild(o); });
+  sel.value = ex ? ex.resistance : 'dumbbell';
+  const typed = from === 'pick' ? document.getElementById('pickSearch').value.trim() : '';
+  document.getElementById('exName').value = ex ? ex.name : typed;
+  document.getElementById('exFormTitle').textContent = ex ? 'Edit exercise' : 'New exercise';
+  document.getElementById('exMsg').textContent = '';
+  showSheet('form');
+}
+
+function saveExerciseForm() {
+  const msg = document.getElementById('exMsg');
+  const name = exClean(document.getElementById('exName').value);
+  const resistance = document.getElementById('exRes').value;
+  if (!name) { msg.textContent = 'Give the exercise a name.'; return; }
+  const old = sheetCtx.editing;
+  const clash = findExercise(name);
+  if (clash && (!old || exKey(clash.name) !== exKey(old))) {
+    msg.textContent = '"' + clash.name + '" is already in your library. Pick it from the list instead of making a copy.';
+    return;
+  }
+  const lib = getLibrary();
+  if (old) {
+    const e = lib.find(x => exKey(x.name) === exKey(old));
+    const oldRes = e ? e.resistance : '';
+    if (e) { e.name = name; e.resistance = resistance; }
+    saveLibrary(lib);
+    if (old !== name) renameExerciseLocally(old, name);
+    if (oldRes !== resistance) setResistanceLocally(name, resistance);
+    enqueueOp('saveExercise', { name: name, resistance: resistance, oldName: old });
+  } else {
+    lib.push({ name: name, resistance: resistance });
+    saveLibrary(lib);
+    enqueueOp('saveExercise', { name: name, resistance: resistance });
+  }
+  closeSheet();
+  if (sheetCtx.from === 'pick') addRow({ exercise: name, resistance: resistance }, true);
+  if (libMode === 'exercises') renderExercises(getLibrary());
+}
+
+// After a rename, keep this phone's saved copies in step (the Sheet does the same in the background).
+function renameExerciseLocally(oldName, newName) {
+  const k = exKey(oldName);
+  const w = readJSON('wt_workouts', null);
+  if (w) { Object.keys(w).forEach(n => w[n].forEach(e => { if (exKey(e.exercise) === k) e.exercise = newName; })); writeJSON('wt_workouts', w); allWorkouts = w; }
+  const h = readJSON('wt_history', null);
+  if (Array.isArray(h)) { h.forEach(sess => (sess.exercises || []).forEach(e => { if (exKey(e.exercise) === k) e.exercise = newName; })); writeJSON('wt_history', h); }
+  try { if (exKey(localStorage.getItem('wt_prog_ex') || '') === k) localStorage.setItem('wt_prog_ex', newName); } catch (e) {}
+}
+function setResistanceLocally(name, resistance) {
+  const k = exKey(name);
+  const w = readJSON('wt_workouts', null);
+  if (w) { Object.keys(w).forEach(n => w[n].forEach(e => { if (exKey(e.exercise) === k) e.resistance = resistance; })); writeJSON('wt_workouts', w); allWorkouts = w; }
 }
 
 // ---------- start ----------

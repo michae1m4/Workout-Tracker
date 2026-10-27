@@ -513,3 +513,24 @@ button.tab { font-weight: 600 !important; }                                   /*
 #splash .spOutline rect { fill: none; stroke: #16070c; stroke-linejoin: round; }
 #splash .spFill rect { fill: #16070c; }
 @media (prefers-reduced-motion: reduce) { #splash { display: none !important; } }
+
+
+/* ---------- v37: exercise library ---------- */
+.segtabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,.07); margin: 0 0 16px; }
+button.segtab { flex: 1; height: 38px; border-radius: 999px; background: none; box-shadow: none; color: var(--muted); font-size: 15px; font-weight: 500 !important; }
+button.segtab::before { display: none; }
+button.segtab.on { background: rgba(255,255,255,.14); color: var(--text); }
+.exinfo { flex: 1; min-width: 0; }
+.exinfo b { display: block; font-size: 17px; font-weight: 650; margin-bottom: 5px; letter-spacing: -.2px; }
+.sheetwrap { position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
+.sheetwrap.hidden { display: none; }
+.sheet { width: 100%; max-width: 560px; max-height: 82vh; overflow-y: auto; background: #1c1c1e; border-radius: 26px 26px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom, 0px)); border: 1px solid rgba(255,255,255,.12); border-bottom: 0; }
+.sheetwrap:not(.hidden) .sheet { animation: sheetup .55s var(--ease-luxe) backwards; }
+@keyframes sheetup { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet h2 { margin: 0 0 14px; font-size: 22px; font-weight: 700; letter-spacing: -.4px; }
+#pickList { margin: 12px 0 4px; display: flex; flex-direction: column; gap: 2px; max-height: 42vh; overflow-y: auto; }
+.pickrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 8px; border-radius: 14px; cursor: pointer; background: none; text-align: left; width: 100%; color: var(--text); font-size: 16px; font-weight: 500; }
+.pickrow:active { background: rgba(255,255,255,.08); }
+.pickrow.off { opacity: .4; pointer-events: none; }
+.pickrow small { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+@media (prefers-reduced-motion: reduce) { .sheetwrap:not(.hidden) .sheet { animation: none; } }
