@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap">
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="stylesheet" href="styles.css?v=40">
 </head>
 <body>
 
@@ -46,7 +46,7 @@
     </div>
   </div>
   <script>window.replaySplash = function () { alert("The opening animation file (splash.js) did not load. Upload splash.js to the same folder as index.html on GitHub."); };</script>
-  <script src="splash.js?v=37"></script>
+  <script src="splash.js?v=40"></script>
 
   <!-- SETUP VIEW: shown once, asks for the secret key -->
   <div id="setupView" class="hidden">
@@ -64,7 +64,7 @@
     <h1 id="homeTitle">Home</h1>
     <div id="homeDate" class="homedate"></div>
     <div id="homeBody"></div>
-    <div class="ver" onclick="replaySplash()">Version 37</div>
+    <div class="ver" onclick="replaySplash()">Version 40</div>
   </div>
 
   <!-- SCHEDULE SCREEN -->
@@ -120,6 +120,7 @@
 
   <!-- RUN VIEW -->
   <div id="runView" class="hidden">
+    <button class="back" onclick="leaveRun()">‹ Home</button>
     <h1 id="runTitle"></h1>
     <div id="runBody"></div>
     <div class="actions">
@@ -131,7 +132,8 @@
   <div id="sheet" class="sheetwrap hidden" onclick="if (event.target === this) closeSheet()">
     <div class="sheet">
       <div id="sheetPick">
-        <h2>Add exercise</h2>
+        <h2 id="pickTitle">Add exercise</h2>
+        <div id="pickSub" class="sub hidden" style="margin:-6px 0 12px"></div>
         <input id="pickSearch" placeholder="Search your library" autocomplete="off" oninput="renderPick()">
         <div id="pickList"></div>
         <div class="actions"><button class="secondary" onclick="openExForm(null, 'pick')">+ New exercise</button><button class="secondary" onclick="closeSheet()">Close</button></div>
@@ -142,9 +144,35 @@
         <input id="exName" placeholder="e.g. Bench Press" autocomplete="off">
         <label style="margin-top:12px">Resistance Type</label>
         <select id="exRes"></select>
+        <label style="margin-top:12px" for="exNotes">Notes</label>
+        <textarea id="exNotes" rows="3" placeholder="Machine height, seat position, grip, anything to remember"></textarea>
         <div class="actions"><button id="exSave" onclick="saveExerciseForm()">Save</button><button class="secondary" onclick="closeSheet()">Cancel</button></div>
         <div id="exMsg" class="msg"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- EDIT SET SHEET: fix the reps or weight of a set you logged wrong -->
+  <div id="editSheet" class="sheetwrap hidden" onclick="if (event.target === this) closeEditSheet()">
+    <div class="sheet">
+      <h2>Edit set</h2>
+      <div id="editSub" class="sub" style="margin:-6px 0 14px"></div>
+      <div class="row" style="margin-top:0">
+        <div><label for="editWeight">Weight</label><input id="editWeight" type="number" inputmode="decimal"></div>
+        <div><label for="editReps">Reps</label><input id="editReps" type="number" inputmode="numeric"></div>
+      </div>
+      <div class="actions"><button onclick="saveEditSet()">Save</button><button class="secondary" onclick="closeEditSheet()">Cancel</button></div>
+      <div id="editMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- NOTE SHEET: the notes of one exercise; they show everywhere the exercise is used -->
+  <div id="noteSheet" class="sheetwrap hidden" onclick="if (event.target === this) closeNote()">
+    <div class="sheet">
+      <h2 id="noteTitle">Notes</h2>
+      <div class="sub" style="margin:-6px 0 14px">Saved with the exercise. They show up in every workout that uses it.</div>
+      <textarea id="noteText" rows="4" placeholder="Machine height, seat position, grip, anything to remember"></textarea>
+      <div class="actions"><button onclick="saveNote()">Save</button><button class="secondary" onclick="closeNote()">Cancel</button></div>
     </div>
   </div>
 
@@ -180,7 +208,7 @@
   <!-- small pill showing background saving status -->
   <div id="syncStatus" class="sync hidden" onclick="flushQueue()"></div>
 
-  <script src="config.js?v=37"></script>
-  <script src="app.js?v=37"></script>
+  <script src="config.js?v=40"></script>
+  <script src="app.js?v=40"></script>
 </body>
 </html>

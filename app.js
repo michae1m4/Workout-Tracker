@@ -375,7 +375,7 @@ function loadHistory() {
   }
   api('getHistory', { limit: 400 })
     .then(fresh => {
-      if (loadQueue().some(i => !i.op)) return; // sets still waiting to be sent: the Sheet is behind
+      if (loadQueue().some(i => !i.op || i.op === 'editSet')) return; // sets or fixes still waiting to be sent: the Sheet is behind
       if (!Array.isArray(fresh)) return;
       writeJSON('wt_history', fresh);
       if (homeVisible()) renderHome();
@@ -390,9 +390,9 @@ function loadHistory() {
 
 // Quietly fetch history ahead of time so the History tab opens instantly.
 function prefetchHistory() {
-  if (!getKey() || loadQueue().some(i => !i.op)) return;
+  if (!getKey() || loadQueue().some(i => !i.op || i.op === 'editSet')) return;
   api('getHistory', { limit: 400 }).then(fresh => {
-    if (loadQueue().some(i => !i.op) || !Array.isArray(fresh)) return;
+    if (loadQueue().some(i => !i.op || i.op === 'editSet') || !Array.isArray(fresh)) return;
     writeJSON('wt_history', fresh);
     if (homeVisible()) renderHome();
     if (!document.getElementById('historyView').classList.contains('hidden')) renderHistory(fresh);
@@ -459,8 +459,14 @@ function toggleHistoryRow(row, wrap, head) {
   anims[0].onfinish = group._cleanup;
 }
 
+let historyShown = [];
+function setText(st) { return st.reps + ' reps × ' + (st.weight > 0 ? fmtNum(st.weight) : 'body weight'); }
+
 function renderHistory(sessions) {
+  historyShown = sessions || [];
   const box = document.getElementById('historyList');
+  // rows you have open stay open when the list is redrawn with fresher data
+  const wasOpen = new Set(Array.prototype.map.call(box.querySelectorAll('.hrow.open'), r => r.dataset.key));
   box.textContent = '';
   if (!sessions || sessions.length === 0) {
     box.appendChild(el('div', 'empty', 'No completed workouts yet. Log a set and it will show up here.'));
@@ -469,8 +475,11 @@ function renderHistory(sessions) {
   const group = el('div', 'group');
   sessions.forEach(sess => {
     const row = el('div', 'hrow');
+    row.dataset.key = sess.date + '|' + sess.workout;
+    if (wasOpen.has(row.dataset.key)) row.classList.add('open');
 
     const head = el('div', 'hhead');
+    head.setAttribute('aria-expanded', wasOpen.has(row.dataset.key) ? 'true' : 'false');
     const text = el('div');
     text.appendChild(el('b', '', sess.workout));
     text.appendChild(el('div', 'sub', prettyDate(sess.date)));
@@ -491,11 +500,17 @@ function renderHistory(sessions) {
       e.sets.forEach(st => {
         const line = el('div', 'hset');
         line.appendChild(el('i', '', 'Set ' + st.set));
-        line.appendChild(document.createTextNode(st.reps + ' reps × ' + (st.weight > 0 ? fmtNum(st.weight) : 'body weight')));
+        const txt = el('span', 'hsettext', setText(st));
+        line.appendChild(txt);
+        const pen = el('button', 'hedit', 'Edit');
+        pen.setAttribute('aria-label', 'Edit ' + e.exercise + ' set ' + st.set);
+        pen.onclick = ev => { ev.stopPropagation(); openEditSet({ sess: sess, ex: e, st: st, txt: txt, vol: volEl }); };
+        line.appendChild(pen);
         detail.appendChild(line);
       });
     });
-    detail.appendChild(el('div', 'hset hvol', 'Total volume ' + Math.round(sess.volume).toLocaleString()));
+    const volEl = el('div', 'hset hvol', 'Total volume ' + Math.round(sess.volume).toLocaleString());
+    detail.appendChild(volEl);
 
     head.onclick = () => toggleHistoryRow(row, wrap, head);
     row.appendChild(head);
@@ -889,19 +904,26 @@ function renderHome() {
   const body = document.getElementById('homeBody');
   body.textContent = '';
 
-  // --- resume a half-finished workout ---
+  // --- resume a half-finished workout (still open in this session, or saved from before) ---
+  const live = hasActiveRun() ? currentRun : null;
   const saved = readJSON(RUN_KEY, null);
-  if (saved && saved.ids && saved.ids.length > 0 && workouts[saved.name] && Date.now() - (saved.startedAt || 0) < 18 * 3600 * 1000) {
+  let info = null;
+  if (live) info = { name: live.name, logged: Math.max(live.ids.size, Object.keys(live.sets || {}).length), planned: live.planned };
+  else if (saved && saved.ids && saved.ids.length > 0 && workouts[saved.name] && Date.now() - (saved.startedAt || 0) < 18 * 3600 * 1000) info = { name: saved.name, logged: saved.ids.length, planned: saved.planned };
+  if (info) {
     const card = el('div', 'card resume');
     card.appendChild(el('div', 'chip', 'In progress'));
-    card.appendChild(el('b', '', saved.name));
-    card.appendChild(el('span', 'sub', saved.ids.length + ' of ' + saved.planned + ' sets logged'));
+    card.appendChild(el('b', '', info.name));
+    card.appendChild(el('span', 'sub', info.logged + ' of ' + info.planned + ' sets logged'));
     const acts = el('div', 'actions');
     const go = el('button', '', 'Resume');
-    go.onclick = () => startRun(saved.name, saved);
+    go.onclick = () => { if (live) resumeLive(); else startRun(saved.name, saved); };
     const drop = el('button', 'secondary', 'Discard');
     drop.onclick = () => {
-      if (confirm('Discard this unfinished workout? Sets you already logged stay in your Sheet.')) { clearRunState(); renderHome(); }
+      if (confirm('Discard this unfinished workout? Sets you already logged stay in your Sheet.')) {
+        if (live) { currentRun = null; api('clearActive').catch(() => {}); }
+        clearRunState(); renderHome();
+      }
     };
     acts.appendChild(go); acts.appendChild(drop);
     card.appendChild(acts);
@@ -1111,12 +1133,33 @@ function lastTimeFor(exName) {
 
 // Starting from Library or Home. If a half-finished workout is saved, ask before replacing it.
 function beginWorkout(name) {
+  if (hasActiveRun()) { // a workout is still running here (you stepped out to look at another screen)
+    if (currentRun.name === name) { resumeLive(); return; }
+    if (!confirm('"' + currentRun.name + '" is still running. Stop it and start "' + name + '" instead? Sets already logged stay saved.')) return;
+    clearRunState(); currentRun = null;
+  }
   const saved = readJSON(RUN_KEY, null);
   if (saved && saved.ids && saved.ids.length > 0) {
     if (saved.name === name) { startRun(name, saved); return; } // same workout: just pick it back up
     if (!confirm('You have an unfinished "' + saved.name + '" workout. Start "' + name + '" instead? Sets already logged stay saved.')) return;
   }
   startRun(name);
+}
+
+function hasActiveRun() { return !!(currentRun && !currentRun.finished); }
+
+// The workout as it is being run: the saved exercises, with this run's swaps laid over them.
+// Swaps live only in this run. They are never written to the saved workout.
+function runPlan(name) {
+  const base = allWorkouts[name] || [];
+  const sw = (currentRun && currentRun.swaps) || {};
+  return base.map((ex, i) => {
+    const s = sw[i];
+    if (!s) return ex;
+    const last = lastTimeFor(s.exercise);
+    const w = last && last.sets.length ? last.sets[last.sets.length - 1].weight : '';
+    return Object.assign({}, ex, { exercise: s.exercise, resistance: s.resistance, weight: w > 0 ? w : '' });
+  });
 }
 
 function startRun(name, resume) {
@@ -1129,10 +1172,16 @@ function startRun(name, resume) {
 
   let planned = 0;
   allWorkouts[name].forEach(ex => { planned += ex.sets; });
-  currentRun = { name: name, planned: planned, rowMap: {}, ids: new Set(resume ? resume.ids : []), sets: resume ? (resume.sets || {}) : {}, startedAt: resume ? (resume.startedAt || Date.now()) : Date.now() };
+  currentRun = { name: name, planned: planned, rowMap: {}, cardKeys: {}, ids: new Set(resume ? resume.ids : []), sets: resume ? (resume.sets || {}) : {},
+    swaps: resume && resume.swaps ? resume.swaps : {}, startedAt: resume ? (resume.startedAt || Date.now()) : Date.now() };
   if (!resume) { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
 
-  allWorkouts[name].forEach((ex, exIndex) => {
+  runPlan(name).forEach((ex, exIndex) => body.appendChild(buildRunCard(name, ex, exIndex)));
+  pushActive(); // tells the lock-screen shortcut which workout is running (and any swaps)
+  syncRunFromServer();
+}
+
+function buildRunCard(name, ex, exIndex) {
     const card = el('div', 'card');
 
     const head = el('div', 'exhead2');
@@ -1141,7 +1190,13 @@ function startRun(name, resume) {
     const meta = el('div', 'exmeta');
     meta.appendChild(el('span', 'pill', ex.resistance));
     meta.appendChild(el('span', '', ex.sets + (ex.sets === 1 ? ' set' : ' sets')));
+    const sb = el('button', 'swapbtn', 'Swap');
+    sb.onclick = () => openSwap(exIndex);
+    meta.appendChild(sb);
     left.appendChild(meta);
+    const orig = allWorkouts[name][exIndex];
+    if (orig && exKey(orig.exercise) !== exKey(ex.exercise)) left.appendChild(el('div', 'swapped', 'Swapped for ' + orig.exercise + ' · this workout only'));
+    left.appendChild(noteEl(ex.exercise));
     head.appendChild(left);
     const rest = el('div', 'restchip');
     rest.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 3h5"/></svg>';
@@ -1154,8 +1209,8 @@ function startRun(name, resume) {
 
     const colhead = el('div', 'colhead');
     colhead.appendChild(el('span', '', 'Set'));
-    colhead.appendChild(el('span', '', 'Reps'));
     colhead.appendChild(el('span', '', 'Weight'));
+    colhead.appendChild(el('span', '', 'Reps'));
     colhead.appendChild(el('span', ''));
     card.appendChild(colhead);
 
@@ -1163,7 +1218,12 @@ function startRun(name, resume) {
     for (let n = 1; n <= ex.sets; n++) {
       card.appendChild(makeSetRow(name, ex, n, rows, last && last.sets[n - 1], exIndex + '-' + n));
     }
-    rows.forEach((en, i) => { currentRun.rowMap[exKey(ex.exercise) + '|' + (i + 1)] = en; }); // so sets logged from the lock screen can be ticked off here
+    currentRun.cardKeys[exIndex] = [];
+    rows.forEach((en, i) => { // so sets logged from the lock screen can be ticked off here
+      const k = exKey(ex.exercise) + '|' + (i + 1);
+      currentRun.rowMap[k] = en;
+      currentRun.cardKeys[exIndex].push(k);
+    });
     // after resuming, carry the numbers from the last logged set into the next empty one
     for (let i = 1; i < rows.length; i++) {
       if (rows[i - 1].done && !rows[i].done) {
@@ -1171,11 +1231,51 @@ function startRun(name, resume) {
         if (!rows[i].weight.value) rows[i].weight.value = rows[i - 1].weight.value;
       }
     }
-    body.appendChild(card);
-  });
-  api('setActive', { workout: name }).catch(() => {}); // tells the lock-screen shortcut which workout is running
-  syncRunFromServer();
+    return card;
 }
+
+// Tells the Sheet which workout is running and which exercises are swapped, so Back Tap asks for the right one.
+function pushActive() {
+  const run = currentRun;
+  if (!run) return;
+  const swaps = Object.keys(run.swaps || {}).map(i => ({ index: Number(i), exercise: run.swaps[i].exercise, resistance: run.swaps[i].resistance }));
+  api('setActive', { workout: run.name, swaps: swaps }).catch(() => {});
+}
+
+// ----- swap an exercise for this run only -----
+let pickMode = { type: 'add' };
+function openSwap(i) {
+  const run = currentRun;
+  if (!run) return;
+  if (Object.keys(run.sets || {}).some(k => k.indexOf(i + '-') === 0)) {
+    alert('You already logged sets for this exercise, so it can’t be swapped now. You can swap an exercise before its first set.');
+    return;
+  }
+  pickMode = { type: 'swap', index: i };
+  document.getElementById('pickTitle').textContent = 'Swap exercise';
+  document.getElementById('pickSub').textContent = 'Only for this workout. Your saved workout stays as it is.';
+  document.getElementById('pickSub').classList.remove('hidden');
+  document.getElementById('pickSearch').value = '';
+  renderPick();
+  showSheet('pick');
+}
+function applySwap(i, ex) {
+  const run = currentRun;
+  if (!run) return;
+  const base = allWorkouts[run.name][i];
+  run.swaps = run.swaps || {};
+  if (exKey(ex.name) === exKey(base.exercise)) delete run.swaps[i];       // back to the original
+  else run.swaps[i] = { exercise: ex.name, resistance: ex.resistance };
+  (run.cardKeys[i] || []).forEach(k => { delete run.rowMap[k]; });
+  const body = document.getElementById('runBody');
+  const card = buildRunCard(run.name, runPlan(run.name)[i], i);
+  body.replaceChild(card, body.children[i]);
+  saveRunState();
+  pushActive();
+}
+
+function leaveRun() { showTab('home'); } // the workout keeps running; Home offers Resume
+function resumeLive() { showOnly('runView'); syncRunFromServer(); }
 
 // Sets logged from the lock screen shortcut are saved straight to the Sheet; tick them off here when you come back.
 function syncRunFromServer() {
@@ -1216,7 +1316,7 @@ const RUN_KEY = 'wt_run';
 function saveRunState() {
   if (!currentRun) return;
   writeJSON(RUN_KEY, { name: currentRun.name, planned: currentRun.planned, ids: Array.from(currentRun.ids),
-    sets: currentRun.sets, startedAt: currentRun.startedAt || Date.now() });
+    sets: currentRun.sets, swaps: currentRun.swaps || {}, startedAt: currentRun.startedAt || Date.now() });
 }
 function clearRunState() { try { localStorage.removeItem(RUN_KEY); } catch (e) {} }
 
@@ -1254,14 +1354,41 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
     btn.textContent = '✓';
     btn.classList.add('done');
     if (animate) { btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
-    btn.disabled = true;
+    btn.disabled = false;          // tap the ✓ to fix a set you logged wrong
     reps.disabled = true;
     weight.disabled = true;
     entry.done = true;
+    entry.editing = false;
   }
   entry.markDone = markDone;
 
+  // Tap the ✓ of a logged set: its fields open up and the button becomes Save.
+  let before = null;
+  function startEdit() {
+    before = { reps: Number(reps.value), weight: Number(weight.value) || 0 };
+    entry.editing = true;
+    reps.disabled = false; weight.disabled = false;
+    btn.textContent = 'Save';
+    btn.classList.remove('done');
+    weight.focus();
+  }
+  function saveEdit() {
+    const r = Number(reps.value), w = Number(weight.value) || 0;
+    if (!r || r <= 0) { reps.focus(); return; }
+    markDone(false);
+    if (before && (r !== before.reps || w !== before.weight)) {
+      if (currentRun) {
+        if (key) currentRun.sets[key] = { reps: r, weight: w };
+        saveRunState();
+        enqueueOp('editSet', { date: '', workout: workout, exercise: ex.exercise, setNumber: n,
+          oldReps: before.reps, oldWeight: before.weight, reps: r, weight: w });
+      }
+    }
+    before = null;
+  }
+
   btn.onclick = () => {
+    if (entry.done) { if (entry.editing) saveEdit(); else startEdit(); return; }
     const r = Number(reps.value);
     if (!r || r <= 0) { reps.focus(); return; }
 
@@ -1301,8 +1428,8 @@ function makeSetRow(workout, ex, n, rows, lastSet, key) {
     markDone();
   }
   row.appendChild(label);
-  row.appendChild(reps);
   row.appendChild(weight);
+  row.appendChild(reps);
   row.appendChild(btn);
   return row;
 }
@@ -1317,6 +1444,7 @@ function finishWorkout() {
     return;
   }
   clearRunState(); // finished: nothing left to resume
+  currentRun.finished = true;
   document.getElementById('finishView').classList.remove('hidden');
   renderFinish();
 }
@@ -1482,6 +1610,7 @@ function addRow(data, animate) {
   info.className = 'exinfo';
   info.appendChild(el('b', '', data.exercise || ''));
   info.appendChild(el('span', 'pill', data.resistance || 'other'));
+  info.appendChild(noteEl(data.exercise || ''));
 
   const exhead = document.createElement('div');
   exhead.className = 'exhead';
@@ -1594,6 +1723,52 @@ function saveLibrary(l) {
   l.sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
   writeJSON(EX_KEY, l);
 }
+function exNote(name) { const e = findExercise(name); return e && e.notes ? e.notes : ''; }
+
+// A tappable note line: shows the exercise's notes, or "+ Add note". Every one on screen updates when notes change.
+function noteEl(name) {
+  const b = el('button', 'exnote');
+  b.dataset.key = exKey(name);
+  b.dataset.name = name;
+  paintNote(b);
+  b.onclick = ev => { ev.stopPropagation(); openNote(name); };
+  return b;
+}
+function paintNote(b) {
+  const t = exNote(b.dataset.name);
+  b.textContent = t || '+ Add note';
+  b.classList.toggle('empty', !t);
+}
+function refreshNoteEls(name) {
+  const k = exKey(name);
+  document.querySelectorAll('.exnote').forEach(b => { if (b.dataset.key === k) paintNote(b); });
+}
+
+let noteFor = '';
+function openNote(name) {
+  noteFor = name;
+  document.getElementById('noteTitle').textContent = name;
+  document.getElementById('noteText').value = exNote(name);
+  document.getElementById('noteSheet').classList.remove('hidden');
+}
+function closeNote() { document.getElementById('noteSheet').classList.add('hidden'); noteFor = ''; }
+function saveNote() {
+  const name = noteFor;
+  if (!name) return;
+  const notes = document.getElementById('noteText').value.replace(/\r/g, '').trim().slice(0, 600);
+  const lib = getLibrary();
+  const e = lib.find(x => exKey(x.name) === exKey(name));
+  if (e) {
+    if ((e.notes || '') !== notes) { e.notes = notes; saveLibrary(lib); enqueueOp('setExerciseNote', { name: e.name, notes: notes }); }
+  } else if (notes) {
+    lib.push({ name: name, resistance: 'other', notes: notes }); saveLibrary(lib);
+    enqueueOp('saveExercise', { name: name, resistance: 'other', notes: notes });
+  }
+  closeNote();
+  refreshNoteEls(name);
+  if (libMode === 'exercises') renderExercises(getLibrary());
+}
+
 function findExercise(name) { const k = exKey(name); return getLibrary().find(e => exKey(e.name) === k) || null; }
 
 function setLibMode(m) {
@@ -1651,6 +1826,7 @@ function renderExercises(list) {
     const n = workoutsUsing(ex.name);
     sub.appendChild(el('span', '', n === 0 ? 'Not in a workout yet' : 'In ' + n + (n === 1 ? ' workout' : ' workouts')));
     main.appendChild(sub);
+    if (ex.notes) main.appendChild(el('div', 'exnotepreview', ex.notes));
     const trash = el('button', 'trash');
     trash.setAttribute('aria-label', 'Delete ' + ex.name);
     trash.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
@@ -1679,14 +1855,54 @@ function showSheet(which) {
 }
 function closeSheet() { document.getElementById('sheet').classList.add('hidden'); }
 
+// ---------- fix a logged set (from History) ----------
+let editing = null;
+function openEditSet(ctx) {
+  editing = ctx;
+  document.getElementById('editSub').textContent = ctx.ex.exercise + ' · Set ' + ctx.st.set + ' · ' + prettyDate(ctx.sess.date);
+  document.getElementById('editReps').value = ctx.st.reps;
+  document.getElementById('editWeight').value = ctx.st.weight;
+  document.getElementById('editMsg').textContent = '';
+  document.getElementById('editSheet').classList.remove('hidden');
+}
+function closeEditSheet() { document.getElementById('editSheet').classList.add('hidden'); editing = null; }
+function saveEditSet() {
+  if (!editing) return;
+  const r = Number(document.getElementById('editReps').value);
+  const w = Number(document.getElementById('editWeight').value) || 0;
+  if (!r || r <= 0) { document.getElementById('editMsg').textContent = 'Reps must be a number above zero.'; return; }
+  if (w < 0) { document.getElementById('editMsg').textContent = 'Weight cannot be negative.'; return; }
+  const c = editing;
+  if (r !== c.st.reps || w !== c.st.weight) {
+    const old = { reps: c.st.reps, weight: c.st.weight };
+    c.st.reps = r; c.st.weight = w;
+    c.sess.volume = c.sess.exercises.reduce((sum, e) => sum + e.sets.reduce((s2, x) => s2 + x.reps * x.weight, 0), 0);
+    c.txt.textContent = setText(c.st);
+    c.vol.textContent = 'Total volume ' + Math.round(c.sess.volume).toLocaleString();
+    writeJSON('wt_history', historyShown);                 // so Progress and Home show it straight away
+    if (homeVisible()) renderHome();
+    enqueueOp('editSet', { date: c.sess.date, workout: c.sess.workout, exercise: c.ex.exercise, setNumber: c.st.set,
+      oldReps: old.reps, oldWeight: old.weight, reps: r, weight: w });
+  }
+  closeEditSheet();
+}
+
 function openPicker() {
+  pickMode = { type: 'add' };
+  document.getElementById('pickTitle').textContent = 'Add exercise';
+  document.getElementById('pickSub').classList.add('hidden');
   document.getElementById('pickSearch').value = '';
   renderPick();
   showSheet('pick');
 }
 function renderPick() {
   const q = exKey(document.getElementById('pickSearch').value);
-  const inWorkout = new Set(Array.from(document.querySelectorAll('#exerciseRows .card:not(.leaving)')).map(c => exKey(c.dataset.exercise)));
+  const swap = pickMode.type === 'swap' && currentRun;
+  const inWorkout = swap
+    ? new Set(runPlan(currentRun.name).map(e => exKey(e.exercise)))
+    : new Set(Array.from(document.querySelectorAll('#exerciseRows .card:not(.leaving)')).map(c => exKey(c.dataset.exercise)));
+  const origKey = swap ? exKey(allWorkouts[currentRun.name][pickMode.index].exercise) : '';
+  const curKey = swap ? exKey(runPlan(currentRun.name)[pickMode.index].exercise) : '';
   const box = document.getElementById('pickList');
   box.textContent = '';
   const items = getLibrary().filter(e => !q || exKey(e.name).indexOf(q) !== -1);
@@ -1695,11 +1911,16 @@ function renderPick() {
     return;
   }
   items.forEach(ex => {
-    const added = inWorkout.has(exKey(ex.name));
+    const k = exKey(ex.name);
+    // in a swap, the original exercise of this slot can always be picked to undo the swap
+    const added = inWorkout.has(k) && !(swap && k === origKey && k !== curKey);
     const row = el('button', 'pickrow' + (added ? ' off' : ''));
     row.appendChild(el('span', '', ex.name));
-    row.appendChild(el('small', '', added ? 'Added' : ex.resistance));
-    row.onclick = () => { addRow({ exercise: ex.name, resistance: ex.resistance }, true); closeSheet(); };
+    row.appendChild(el('small', '', swap && k === curKey ? 'Current' : swap && k === origKey ? 'Original' : added ? (swap ? 'In workout' : 'Added') : ex.resistance));
+    row.onclick = () => {
+      if (swap) { if (k !== curKey) applySwap(pickMode.index, ex); closeSheet(); return; }
+      addRow({ exercise: ex.name, resistance: ex.resistance }, true); closeSheet();
+    };
     box.appendChild(row);
   });
 }
@@ -1713,6 +1934,7 @@ function openExForm(ex, from) {
   sel.value = ex ? ex.resistance : 'dumbbell';
   const typed = from === 'pick' ? document.getElementById('pickSearch').value.trim() : '';
   document.getElementById('exName').value = ex ? ex.name : typed;
+  document.getElementById('exNotes').value = ex && ex.notes ? ex.notes : '';
   document.getElementById('exFormTitle').textContent = ex ? 'Edit exercise' : 'New exercise';
   document.getElementById('exMsg').textContent = '';
   showSheet('form');
@@ -1722,6 +1944,7 @@ function saveExerciseForm() {
   const msg = document.getElementById('exMsg');
   const name = exClean(document.getElementById('exName').value);
   const resistance = document.getElementById('exRes').value;
+  const notes = document.getElementById('exNotes').value.replace(/\r/g, '').trim().slice(0, 600);
   if (!name) { msg.textContent = 'Give the exercise a name.'; return; }
   const old = sheetCtx.editing;
   const clash = findExercise(name);
@@ -1733,18 +1956,22 @@ function saveExerciseForm() {
   if (old) {
     const e = lib.find(x => exKey(x.name) === exKey(old));
     const oldRes = e ? e.resistance : '';
-    if (e) { e.name = name; e.resistance = resistance; }
+    if (e) { e.name = name; e.resistance = resistance; e.notes = notes; }
     saveLibrary(lib);
     if (old !== name) renameExerciseLocally(old, name);
     if (oldRes !== resistance) setResistanceLocally(name, resistance);
-    enqueueOp('saveExercise', { name: name, resistance: resistance, oldName: old });
+    enqueueOp('saveExercise', { name: name, resistance: resistance, oldName: old, notes: notes });
   } else {
-    lib.push({ name: name, resistance: resistance });
+    lib.push({ name: name, resistance: resistance, notes: notes });
     saveLibrary(lib);
-    enqueueOp('saveExercise', { name: name, resistance: resistance });
+    enqueueOp('saveExercise', { name: name, resistance: resistance, notes: notes });
   }
   closeSheet();
-  if (sheetCtx.from === 'pick') addRow({ exercise: name, resistance: resistance }, true);
+  refreshNoteEls(name);
+  if (sheetCtx.from === 'pick') {
+    if (pickMode.type === 'swap' && currentRun) applySwap(pickMode.index, { name: name, resistance: resistance });
+    else addRow({ exercise: name, resistance: resistance }, true);
+  }
   if (libMode === 'exercises') renderExercises(getLibrary());
 }
 

@@ -534,3 +534,32 @@ button.segtab.on { background: rgba(255,255,255,.14); color: var(--text); }
 .pickrow.off { opacity: .4; pointer-events: none; }
 .pickrow small { color: var(--muted); font-size: 12.5px; font-weight: 400; }
 @media (prefers-reduced-motion: reduce) { .sheetwrap:not(.hidden) .sheet { animation: none; } }
+
+/* ---------- Version 39: fix a logged set ---------- */
+.hset .hsettext { flex: 1; min-width: 0; }
+button.hedit { height: auto; padding: 4px 0 4px 12px; background: none; color: var(--pink); font-size: 14px; font-weight: 600; margin-left: auto; }
+.setrow button.done:not(:disabled) { cursor: pointer; }
+
+/* ---------- Version 39: exercise notes ---------- */
+textarea {
+  font-size: 16px; font-family: inherit; line-height: 1.35; padding: 12px 14px; resize: none;
+  border: 0; border-radius: var(--r-md); width: 100%; box-sizing: border-box; background: var(--field); color: var(--text);
+}
+textarea::placeholder { color: var(--faint); }
+button.exnote {
+  display: block; width: 100%; height: auto; padding: 8px 0 0; margin: 0; text-align: left;
+  background: none; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1.35;
+  letter-spacing: 0; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+button.exnote.empty { color: var(--pink); font-weight: 600; }
+button.exnote:active { transform: none; opacity: .7; }
+.exnotepreview { color: var(--muted); font-size: 14px; line-height: 1.35; margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+button.exnote, button.hedit { background: none; box-shadow: none; }
+button.exnote::before, button.hedit::before { display: none; }
+
+/* ---------- Version 40: swap an exercise, back button on the workout screen ---------- */
+button.swapbtn { height: auto; padding: 2px 0 2px 6px; background: none; box-shadow: none; color: var(--pink); font-size: 14px; font-weight: 600; letter-spacing: 0; }
+button.swapbtn::before { display: none; }
+.swapped { color: var(--muted); font-size: 13px; margin-top: 6px; }
+#runView .back { margin-bottom: 0; }
